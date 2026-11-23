@@ -115,8 +115,9 @@ def check_version(customer: str, product: str, env: str, version: str, catalog: 
 # ---------------------------------------------------------------------------------------- render
 
 class Renderer:
-    def __init__(self, repo):
+    def __init__(self, repo, root: Path = ROOT):
         self.repo = repo
+        self.root = root
         self.plat = repo.platform
         self.files: dict[Path, dict] = {}
         self.root_values: dict[str, dict] = {
@@ -144,6 +145,16 @@ class Renderer:
         hub = self.plat["hubRegion"]
         location = self.repo.regions[hub]["multiRegion"] if side == "prod" else hub
         return f"{location}-docker.pkg.dev/{self.project_id(self.gcfg(group)['platformProject'])}/products"
+
+    def digest(self, catalog: dict, env: str, version: str) -> dict:
+        """Prod deploys by the promoted digest (Binary Authorization); non-prod by tag."""
+        if env != "prod":
+            return {}
+        rel = self.root / "products" / catalog["metadata"]["name"] / "releases.yaml"
+        promoted = (yaml.safe_load(rel.read_text(encoding="utf-8")) or {}).get("promoted", {}) if rel.exists() else {}
+        if not re.fullmatch(r"sha256:[a-f0-9]{64}", str(promoted.get(version, ""))):
+            raise RenderError(f"{catalog['metadata']['name']} {version} has not been promoted to prod (releases.yaml)")
+        return {"digest": promoted[version]}
 
     def hosts(self, customer: str, env: str, spec: dict) -> list[str]:
         dns = self.plat["dns"]
@@ -302,7 +313,7 @@ class Renderer:
             "envGroup": group,
             "regionRole": target["role"],
             "product": {"name": catalog["metadata"]["name"], "shortCode": short},
-            "image": {"registry": self.registry(group), "tag": version},
+            "image": {"registry": self.registry(group), "tag": version} | self.digest(catalog, env, version),
             "port": c["runtime"]["port"],
             "replicas": replicas,
             "resources": {"cpu": str(sizing["cpu"]), "memory": sizing["memory"]},
@@ -383,7 +394,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     root = args.repo.resolve()
     try:
-        rendered = Renderer(_load_repo(root)).render(root)
+        rendered = Renderer(_load_repo(root), root).render(root)
     except (RenderError, KeyError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

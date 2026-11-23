@@ -281,6 +281,22 @@ def main(argv: list[str] | None = None) -> int:
             (tmpdir / f"root-{g}.yaml").write_text(root_text, encoding="utf-8")
             (tmpdir / f"apps-{g}.yaml").write_text(snapshot[SNAPSHOT / g / "applications.yaml"], encoding="utf-8")
 
+        # Chart CI fixtures (helm/<chart>/ci/*.yaml): paths no example customer exercises.
+        for fx in sorted(ROOT.glob("helm/*/ci/*.yaml")):
+            chart = fx.parent.parent.relative_to(ROOT).as_posix()
+            lint_sets.setdefault(chart, []).append([fx])
+            try:
+                text = helm_template(chart, "fixture", "fixture", [fx])
+            except RuntimeError as e:
+                step(f"fixture {fx.relative_to(ROOT).as_posix()}", False, str(e))
+                continue
+            snapshot[SNAPSHOT / "fixtures" / f"{fx.parent.parent.name}-{fx.stem}.yaml"] = dump(docs(text))
+            out = tmpdir / "fixtures" / f"{fx.parent.parent.name}-{fx.stem}.yaml"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(text, encoding="utf-8")
+            manifests_for_policy.append(out)
+            step(f"fixture {fx.relative_to(ROOT).as_posix()}", True)
+
         # Lint: every chart with every values combination it is deployed with
         for chart, sets in lint_sets.items():
             errors = []

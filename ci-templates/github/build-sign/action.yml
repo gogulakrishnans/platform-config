@@ -1,0 +1,47 @@
+# Composite action for product repositories on GitHub (architecture §15, Decision 17):
+#   build -> push to the non-prod Artifact Registry -> vulnerability scan gate
+#   -> Binary Authorization attestation "built-and-signed" (KMS-backed) -> outputs the digest.
+# The caller authenticates first (Workload Identity Federation, ci-builder identity) and runs on the
+# non-prod self-hosted pool. See ci-templates/github/product-release.example.yml.
+name: platform build-sign
+description: Build, scan and sign a product image for the platform (non-prod registry).
+
+inputs:
+  product: { description: catalog product name, required: true }
+  version: { description: semver release, required: true }
+  context: { description: docker build context, default: "." }
+  registry: { description: "<hub>-docker.pkg.dev/<platform-nonprod>/products", required: true }
+  attestor: { description: projects/<security-nonprod>/attestors/built-and-signed, required: true }
+  key-version: { description: KMS key version that signs the attestation, required: true }
+  max-severity: { description: fail on vulnerabilities at or above this severity, default: HIGH }
+
+outputs:
+  digest:
+    description: sha256 digest of the pushed image
+    value: ${{ steps.build.outputs.digest }}
+  image:
+    description: registry/name@digest
+    value: ${{ steps.build.outputs.image }}
+
+runs:
+  using: composite
+  steps:
+    - id: build
+      shell: bash
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        PRODUCT: ${{ inputs.product }}
+        VERSION: ${{ inputs.version }}
+        CONTEXT: ${{ inputs.context }}
+      run: '"$GITHUB_ACTION_PATH/../../scripts/build-sign.sh" build "$PRODUCT" "$VERSION" "$CONTEXT" | tee -a "$GITHUB_OUTPUT"'
+    - shell: bash
+      env:
+        IMAGE: ${{ steps.build.outputs.image }}
+        MAX_SEVERITY: ${{ inputs.max-severity }}
+      run: '"$GITHUB_ACTION_PATH/../../scripts/build-sign.sh" scan "$IMAGE" "$MAX_SEVERITY"'
+    - shell: bash
+      env:
+        IMAGE: ${{ steps.build.outputs.image }}
+        ATTESTOR: ${{ inputs.attestor }}
+        KEY_VERSION: ${{ inputs.key-version }}
+      run: '"$GITHUB_ACTION_PATH/../../scripts/build-sign.sh" attest "$IMAGE" "$ATTESTOR" "$KEY_VERSION"'

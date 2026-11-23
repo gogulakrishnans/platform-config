@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform.example/schemas/product.schema.json",
+  "title": "ProductDefinition (products/<product>/product.yaml)",
+  "description": "Platform-owned catalog entry. Cross-file rules (dependencies, Pub/Sub publishers, unique short codes) are checked by scripts/validate-registry.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "$defs": {
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+    "cpu": { "type": "string", "pattern": "^([0-9]+m|[0-9]+(\\.[0-9]+)?)$" },
+    "memory": { "type": "string", "pattern": "^[0-9]+(Mi|Gi)$" },
+    "flag": { "type": "object", "additionalProperties": false, "required": ["required"], "properties": { "required": { "type": "boolean" } } },
+    "gkeSizing": {
+      "type": "object", "additionalProperties": false, "required": ["replicas", "cpu", "memory"],
+      "properties": {
+        "replicas": {
+          "type": "object", "additionalProperties": false, "required": ["min", "max"],
+          "properties": { "min": { "type": "integer", "minimum": 1 }, "max": { "type": "integer", "minimum": 1 } }
+        },
+        "cpu": { "$ref": "#/$defs/cpu" },
+        "memory": { "$ref": "#/$defs/memory" }
+      }
+    },
+    "runSizing": {
+      "type": "object", "additionalProperties": false, "required": ["minInstances", "maxInstances", "cpu", "memory"],
+      "properties": {
+        "minInstances": { "type": "integer", "minimum": 0 },
+        "maxInstances": { "type": "integer", "minimum": 1 },
+        "cpu": { "$ref": "#/$defs/cpu" },
+        "memory": { "$ref": "#/$defs/memory" }
+      }
+    },
+    "migSizing": {
+      "type": "object", "additionalProperties": false, "required": ["machineType", "minReplicas", "maxReplicas"],
+      "properties": {
+        "machineType": { "type": "string", "pattern": "^[a-z0-9]+-[a-z]+-[0-9]+$" },
+        "minReplicas": { "type": "integer", "minimum": 1 },
+        "maxReplicas": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "sizingOf": {
+      "type": "object", "additionalProperties": false, "required": ["dev", "stage", "uat", "prod"],
+      "properties": { "dev": {}, "stage": {}, "uat": {}, "prod": {} }
+    }
+  },
+  "properties": {
+    "apiVersion": { "const": "platform.example/v1" },
+    "kind": { "const": "ProductDefinition" },
+    "metadata": {
+      "type": "object", "additionalProperties": false, "required": ["name"],
+      "properties": { "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,40}$" } }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shortCode", "owner", "runtime", "releases", "data", "persistentVolume", "dependencies", "routing", "sizing", "compliance", "supportsExport"],
+      "properties": {
+        "shortCode": { "type": "string", "pattern": "^[a-z][a-z0-9]{0,11}$", "description": "max 12 characters, used in resource names" },
+        "owner": { "type": "string", "pattern": "^team-[a-z0-9-]+$" },
+        "runtime": {
+          "type": "object", "additionalProperties": false, "required": ["type", "port"],
+          "properties": {
+            "type": { "enum": ["gke", "cloud-run", "mig"] },
+            "port": { "type": "integer", "minimum": 1024, "maximum": 65535 },
+            "imageFamily": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,61}$" },
+            "healthCheckPath": { "type": "string", "pattern": "^/" }
+          },
+          "if": { "properties": { "type": { "const": "mig" } } },
+          "then": { "required": ["imageFamily", "healthCheckPath"] }
+        },
+        "releases": {
+          "type": "object", "additionalProperties": false, "required": ["latest", "supported", "schemaCompatibility"],
+          "properties": {
+            "latest": { "$ref": "#/$defs/version" },
+            "supported": { "type": "array", "items": { "$ref": "#/$defs/version" }, "minItems": 1, "maxItems": 3, "description": "N, N-1, N-2" },
+            "schemaCompatibility": {
+              "type": "object", "additionalProperties": false, "required": ["oldestCompatible"],
+              "properties": { "oldestCompatible": { "$ref": "#/$defs/version" } }
+            }
+          }
+        },
+        "data": {
+          "type": "object", "additionalProperties": false, "required": ["cloudSql", "storage", "bigQuery", "pubsub"],
+          "properties": {
+            "cloudSql": { "$ref": "#/$defs/flag" },
+            "storage": { "$ref": "#/$defs/flag" },
+            "bigQuery": { "$ref": "#/$defs/flag" },
+            "pubsub": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "publish": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,20}$" }, "uniqueItems": true },
+                "subscribe": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*-[a-z][a-z0-9-]*$" }, "uniqueItems": true, "description": "{publisher shortCode}-{topic}" }
+              }
+            }
+          }
+        },
+        "persistentVolume": {
+          "type": "object", "additionalProperties": false, "required": ["required"],
+          "properties": {
+            "required": { "type": "boolean" },
+            "size": { "$ref": "#/$defs/memory" },
+            "approvedBy": { "type": "string", "description": "architecture review reference; mandatory when required is true" }
+          },
+          "if": { "properties": { "required": { "const": true } } },
+          "then": { "required": ["required", "size", "approvedBy"] }
+        },
+        "dependencies": {
+          "type": "object", "additionalProperties": false, "required": ["required"],
+          "properties": { "required": { "type": "array", "items": { "type": "string" }, "uniqueItems": true } }
+        },
+        "routing": {
+          "type": "object", "additionalProperties": false, "required": ["paths"],
+          "properties": { "paths": { "type": "array", "items": { "type": "string", "pattern": "^/v[0-9]+/[a-z0-9/*-]+$" }, "minItems": 1 } }
+        },
+        "egress": {
+          "type": "object", "additionalProperties": false,
+          "properties": { "allow": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9.-]+:[0-9]+$" } } }
+        },
+        "sizing": { "$ref": "#/$defs/sizingOf" },
+        "compliance": {
+          "type": "object", "additionalProperties": false, "required": ["pii", "pci"],
+          "properties": { "pii": { "type": "boolean" }, "pci": { "type": "boolean" } }
+        },
+        "supportsExport": { "type": "boolean", "description": "config export/import, required for promote-up" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "runtime": { "properties": { "type": { "const": "gke" } } } } },
+          "then": { "properties": { "sizing": { "additionalProperties": { "$ref": "#/$defs/gkeSizing" } } } }
+        },
+        {
+          "if": { "properties": { "runtime": { "properties": { "type": { "const": "cloud-run" } } } } },
+          "then": { "properties": { "sizing": { "additionalProperties": { "$ref": "#/$defs/runSizing" } } } }
+        },
+        {
+          "if": { "properties": { "runtime": { "properties": { "type": { "const": "mig" } } } } },
+          "then": { "properties": { "sizing": { "additionalProperties": { "$ref": "#/$defs/migSizing" } } } }
+        }
+      ]
+    }
+  }
+}

@@ -13,6 +13,7 @@ spec:
     edge: { customCertificate: false, customDomain: null }
     variantImages: true                # opt-in: customer variant images allowed
   placement:                           # written back by the placement job, never hand-edited
+    # keyed by environment group: dev and stage are separate environments in the devstage cell
     devstage: { cluster: devstage-us-central1-01, sqlInstance: sql-nonprod-us-central1-01 }
     uat:      { cluster: uat-us-central1-01, sqlInstance: sql-nonprod-us-central1-01 }
     prod:     { cluster: prod-us-central1-01, sqlInstance: sql-prod-us-central1-01, drCluster: prod-us-central1-01-dr }

@@ -1,0 +1,9 @@
+# Rendered by Ansible from instance metadata (set by L3 Terraform: customer, environment, database).
+customer: "{{ ansible_facts['gce_metadata']['customer'] | default('') }}"
+environment: "{{ ansible_facts['gce_metadata']['environment'] | default('') }}"
+server:
+  port: {{ billing_port }}
+database:
+  host: 127.0.0.1         # Cloud SQL Auth Proxy (systemd unit from the image), IAM login
+  name: "{{ ansible_facts['gce_metadata']['database'] | default('') }}"
+  schema: billing

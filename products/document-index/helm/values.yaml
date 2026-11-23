@@ -1,0 +1,10 @@
+# document-index: layer 2 (product). Stateful (approved persistent volume): the chart renders a
+# StatefulSet with partitioned rolling updates; Argo Rollouts canary does not apply.
+image:
+  name: document-index
+command: ["/app/document-index"]
+args: ["serve", "--shards=/data/shards"]
+env:
+  LOG_FORMAT: json
+migration:
+  command: ["/app/document-index", "migrate", "up"]

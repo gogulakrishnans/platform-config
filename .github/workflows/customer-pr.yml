@@ -1,0 +1,67 @@
+# Onboarding and product-change PRs (runbooks/onboarding.md): run placement, regenerate the derived
+# files and commit them back to the PR branch, so a PR that sets only region.primary becomes complete.
+# Only for branches of this repository: a fork PR gets no write token and runs only repo-gate.
+name: customer-pr
+
+on:
+  pull_request:
+    paths:
+      - customers/**
+      - products/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: customer-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  write-back:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # push the generated files to the PR branch
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - name: Validate the registry
+        run: python scripts/validate-registry.py
+      - name: Placement (exit 3 = capacity request needed)
+        id: placement
+        run: |
+          set +e
+          python scripts/placement/placement.py --repo . --all --write --request-file capacity-request.json
+          code=$?
+          if [ "$code" -eq 3 ]; then
+            echo "::error title=Capacity request::$(cat capacity-request.json). Open a capacity PR (runbooks/capacity.md) and re-run."
+          fi
+          exit "$code"
+      - name: Regenerate derived files
+        run: |
+          python scripts/generate-layers.py
+          python scripts/render-gitops.py
+          python scripts/catalog-report.py
+      - name: Commit back to the PR branch
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "platform-bot"
+            git config user.email "platform-bot@users.noreply.github.com"
+            git add -A customers infrastructure/layers argocd/generated docs/catalog.md
+            git commit -m "chore: placement and generated files for #${PR}"
+            git push
+          fi
+      - name: States this PR will apply after merge
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$BASE"
+          git diff --name-only "origin/${BASE}...HEAD" | python scripts/changed-states.py \
+            | jq -r '.waves[] | select(.count > 0) | "- \(.wave): \([.states[].prefix] | join(", "))"' >> "$GITHUB_STEP_SUMMARY"

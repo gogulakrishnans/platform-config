@@ -1,0 +1,33 @@
+apiVersion: platform.example/v1
+kind: ProductDefinition
+metadata:
+  name: document-index
+spec:
+  shortCode: docindex
+  owner: team-search
+  runtime:
+    type: gke
+    port: 8080
+  releases:
+    latest: "1.2"
+    supported: ["1.0", "1.1", "1.2"]
+    schemaCompatibility: { oldestCompatible: "1.1" }
+  data:
+    cloudSql: { required: true }           # schema "docindex": index metadata
+    storage: { required: true }            # source documents and index snapshots
+    bigQuery: { required: false }
+    pubsub: {}
+  persistentVolume:                        # local index shards (GKE only, approved exception)
+    required: true
+    size: 50Gi
+    approvedBy: ARB-2026-014
+  dependencies: { required: [payment-api] }   # indexes payment documents
+  routing:
+    paths: ["/v1/search", "/v1/search/*"]
+  sizing:
+    dev:   { replicas: { min: 2, max: 2 },  cpu: 500m, memory: 1Gi }
+    stage: { replicas: { min: 2, max: 2 },  cpu: 500m, memory: 1Gi }
+    uat:   { replicas: { min: 2, max: 3 },  cpu: "1",  memory: 2Gi }
+    prod:  { replicas: { min: 3, max: 6 },  cpu: "2",  memory: 4Gi }
+  compliance: { pii: true, pci: false }
+  supportsExport: true

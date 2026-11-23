@@ -15,10 +15,12 @@ locals {
   env  = var.environment
   cust = local.reg.customers[local.c].spec
 
-  group       = local.reg.envs[local.env].group
-  side        = local.reg.envs[local.env].side
-  gcfg        = local.reg.platform.groups[local.group]
-  is_prod     = local.env == "prod"
+  group   = local.reg.envs[local.env].group
+  side    = local.reg.envs[local.env].side
+  gcfg    = local.reg.platform.groups[local.group]
+  is_prod = local.env == "prod"
+  # The cell has failed over to its DR pair (decisions #25): push subscriptions target the DR services.
+  dr_active   = local.is_prod && try(local.reg.cluster_plan[local.placement.cluster].dr_active, false)
   hot_standby = try(local.cust.options.dr, "warm-standby") == "hot-standby"
   isolation   = try(local.cust.options.isolation, "shared")
 
@@ -270,7 +272,7 @@ module "topic" {
   publishers     = [local.member[each.value.product]]
   subscriptions = {
     for name, s in local.subscriptions : name => {
-      push_endpoint        = module.cloud_run[s.subscriber].uri
+      push_endpoint        = local.dr_active ? module.cloud_run_dr[s.subscriber].uri : module.cloud_run[s.subscriber].uri
       oidc_service_account = google_service_account.env.email
     } if s.topic == each.key
   }

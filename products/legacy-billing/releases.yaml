@@ -1,0 +1,7 @@
+# Written by the image promotion pipeline (packer/README.md). Do not edit.
+# Promoted releases: version -> golden image in platform-prod (copied from the non-prod family by
+# the promoter). A prod pin in customers/*/products.yaml must be listed here
+# (scripts/validate-registry.py CUS006); the prod MIG instance template uses this image.
+promoted:
+  "3.3.2": projects/pfx-platform-prod/global/images/legacy-billing-3-3-2
+  "3.4.1": projects/pfx-platform-prod/global/images/legacy-billing-3-4-1

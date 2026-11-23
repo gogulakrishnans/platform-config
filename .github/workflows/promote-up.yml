@@ -1,0 +1,85 @@
+# Promote a customer's product configuration one step up (architecture §9, data-flows/README.md).
+#   export  - source pool deployer identity -> the source env's own bucket (promote/ prefix)
+#   publish - after the approvals in data-sharing.yaml (GitHub Environment promote-<to> reviewers),
+#             the promoter (prod pool) copies it to the shared bucket's promote/ prefix
+#   import  - target pool deployer identity, which reads the shared bucket
+name: promote-up
+
+on:
+  workflow_dispatch:
+    inputs:
+      customer: { description: customer ID, required: true }
+      product: { description: product name, required: true }
+      from: { description: dev | stage | uat, required: true }
+      to: { description: stage | uat | prod, required: true }
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: pip install -r requirements-dev.txt
+      - id: plan
+        env:
+          CUSTOMER: ${{ inputs.customer }}
+          PRODUCT: ${{ inputs.product }}
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+        run: |
+          python data-flows/promote-up/promote_up.py --customer "$CUSTOMER" --product "$PRODUCT" \
+            --from "$FROM" --to "$TO" --run-id "${GITHUB_RUN_ID}" > plan.json
+          echo "plan=$(jq -c . plan.json)" >> "$GITHUB_OUTPUT"
+
+  export:
+    needs: plan
+    runs-on: [self-hosted, linux, "pool-${{ fromJson(needs.plan.outputs.plan).from.runnerPool }}"]
+    environment: promote-export
+    steps:
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SERVICE_ACCOUNT }}   # promote-export environment: per-pool deployer
+      - name: Export via the product API and stage the package
+        env:
+          PLAN: ${{ needs.plan.outputs.plan }}
+        run: |
+          token="$(gcloud auth print-identity-token --audiences="$(jq -r .from.exportUrl <<<"$PLAN")")"
+          curl -sSf -X POST -H "Authorization: Bearer $token" "$(jq -r .from.exportUrl <<<"$PLAN")" -o package.tar.gz
+          gcloud storage cp package.tar.gz "$(jq -r .staging <<<"$PLAN")"
+
+  publish:
+    needs: [plan, export]
+    runs-on: [self-hosted, linux, pool-prod]
+    environment: ${{ fromJson(needs.plan.outputs.plan).to.githubEnvironment }}   # required reviewers
+    steps:
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ fromJson(needs.plan.outputs.plan).publisher }}
+      - name: Publish to the shared bucket
+        env:
+          PLAN: ${{ needs.plan.outputs.plan }}
+        run: gcloud storage cp "$(jq -r .staging <<<"$PLAN")" "$(jq -r .package <<<"$PLAN")"
+
+  import:
+    needs: [plan, publish]
+    runs-on: [self-hosted, linux, "pool-${{ fromJson(needs.plan.outputs.plan).to.runnerPool }}"]
+    environment: promote-import
+    steps:
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SERVICE_ACCOUNT }}   # promote-import environment: per-pool deployer
+      - name: Import via the product API
+        env:
+          PLAN: ${{ needs.plan.outputs.plan }}
+        run: |
+          gcloud storage cp "$(jq -r .package <<<"$PLAN")" package.tar.gz
+          token="$(gcloud auth print-identity-token --audiences="$(jq -r .to.importUrl <<<"$PLAN")")"
+          curl -sSf -X POST -H "Authorization: Bearer $token" --data-binary @package.tar.gz "$(jq -r .to.importUrl <<<"$PLAN")"

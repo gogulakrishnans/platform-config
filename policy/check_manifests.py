@@ -10,6 +10,8 @@ Rules
               RuntimeDefault seccomp; not privileged.
   K8S-RES001  Every container sets CPU and memory requests and a memory limit.
   K8S-IMG001  Images are pinned to a version tag or a digest (never :latest or untagged).
+  K8S-IMG002  Prod product workloads (environment=prod, customer != shared) use the promoted
+              digest, which Binary Authorization verifies.
 
 Usage: python policy/check_manifests.py <rendered.yaml>...      exit 1 on findings
 """
@@ -146,6 +148,11 @@ def check(objs: list[dict], source: str = "") -> list[str]:
             findings += pss_findings(where, spec)
             findings += resource_findings(where, spec)
             findings += image_findings(where, spec)
+            labels = meta.get("labels") or {}
+            if labels.get("environment") == "prod" and labels.get("customer") not in (None, "shared"):
+                for c in spec.get("containers") or []:
+                    if "@sha256:" not in str(c.get("image", "")):
+                        findings.append(f"K8S-IMG002 {where} container {c.get('name')!r}: prod images must be referenced by digest")
     return findings
 
 

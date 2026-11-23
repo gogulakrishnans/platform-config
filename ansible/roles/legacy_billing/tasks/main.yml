@@ -1,0 +1,12 @@
+---
+- name: Bake the image
+  ansible.builtin.import_tasks: bake.yml
+  when: phase == 'bake'
+
+- name: Run the schema migration before the rollout
+  ansible.builtin.import_tasks: migrate.yml
+  when: phase == 'pre-rollout'
+
+- name: Correct configuration drift
+  ansible.builtin.import_tasks: configure.yml
+  when: phase == 'configure'

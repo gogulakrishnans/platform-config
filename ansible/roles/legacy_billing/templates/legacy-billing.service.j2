@@ -1,0 +1,15 @@
+[Unit]
+Description=legacy-billing {{ legacy_billing_version }}
+After=network-online.target google-guest-agent.service
+Wants=network-online.target
+
+[Service]
+User={{ billing_user }}
+ExecStart={{ billing_home }}/bin/legacy-billing serve --port {{ billing_port }} --config {{ billing_home }}/config/application.yaml
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths={{ billing_home }}/data
+
+[Install]
+WantedBy=multi-user.target

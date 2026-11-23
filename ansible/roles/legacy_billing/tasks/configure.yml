@@ -1,0 +1,9 @@
+---
+- name: Render the runtime configuration from instance metadata
+  ansible.builtin.template:
+    src: application.yaml.j2
+    dest: "{{ billing_home }}/config/application.yaml"
+    owner: "{{ billing_user }}"
+    group: "{{ billing_user }}"
+    mode: "0640"
+  notify: Restart legacy-billing

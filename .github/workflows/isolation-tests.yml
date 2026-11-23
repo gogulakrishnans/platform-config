@@ -1,0 +1,45 @@
+# Tenant isolation tests against a real environment (architecture §10): for a sample of customer
+# pairs, customer A's identities must fail to reach customer B's database, schema, dataset, bucket,
+# topic, namespace and key. Scheduled, and required before a release; a failure blocks it.
+# Self-hosted pool only; never runs for pull requests.
+name: isolation-tests
+
+on:
+  schedule:
+    - cron: "41 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: dev | stage | uat | prod
+        default: uat
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  isolation:
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ inputs.environment && fromJson(format('["{0}"]', inputs.environment)) || fromJson('["dev","stage","uat","prod"]') }}
+    runs-on: [self-hosted, linux, "pool-${{ matrix.environment == 'prod' && 'prod' || matrix.environment == 'uat' && 'uat' || 'devstage' }}"]
+    environment: isolation-${{ matrix.environment == 'prod' && 'prod' || 'nonprod' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.ISOLATION_TESTER_SERVICE_ACCOUNT }}   # can impersonate the env GSAs, nothing else
+      - run: pip install -r requirements-dev.txt -r tests/isolation/requirements.txt
+      - name: Isolation tests
+        env:
+          ISOLATION_ENV: ${{ matrix.environment }}
+          ISOLATION_LIVE: "1"
+          ISOLATION_SAMPLE: "20"     # customer pairs per run, rotated
+        run: python -m pytest -q tests/isolation --junitxml=isolation-${{ matrix.environment }}.xml

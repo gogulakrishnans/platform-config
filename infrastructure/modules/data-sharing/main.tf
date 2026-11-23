@@ -93,9 +93,11 @@ module "shared_bucket" {
   location   = local.region
   kms_key    = local.key
   labels     = module.labels.labels
+  # Shared reference data and promote-up packages (promote/ prefix): written only by the promoter,
+  # read by the customer's environment identities.
   iam = concat(
-    local.shared_reference ? [for r in local.readers : { role = "roles/storage.objectViewer", member = r }] : [],
-    local.shared_reference ? [{ role = "roles/storage.objectAdmin", member = local.promoter }] : [],
+    local.shared_reference || local.promote_up ? [for r in local.readers : { role = "roles/storage.objectViewer", member = r }] : [],
+    local.shared_reference || local.promote_up ? [{ role = "roles/storage.objectAdmin", member = local.promoter }] : [],
   )
 
   depends_on = [module.exchange_key]

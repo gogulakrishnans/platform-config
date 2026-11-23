@@ -22,7 +22,7 @@ def repo(tmp_path):
 
 
 def render(root):
-    return {p.as_posix(): yaml.safe_load(t) for p, t in rg.Renderer(rg._load_repo(root)).render(root).items()}
+    return {p.as_posix(): yaml.safe_load(t) for p, t in rg.Renderer(rg._load_repo(root), root).render(root).items()}
 
 
 def edit(path, fn):
@@ -57,8 +57,19 @@ def test_identity_and_data_names(repo):
         "endpoint": "sql-prod-us-east1-01.write.example",
     }
     assert v["platformEnv"]["GCS_BUCKET"] == "pfx-acme-corp-payment-prod"
-    assert v["image"] == {"registry": "us-docker.pkg.dev/pfx-platform-prod/products", "tag": "2.5.0"}
+    assert v["image"]["registry"] == "us-docker.pkg.dev/pfx-platform-prod/products" and v["image"]["tag"] == "2.5.0"
+    assert v["image"]["digest"].startswith("sha256:")   # prod deploys by the promoted digest
     assert v["ingress"] == {"hosts": ["acme-corp.platform.example"], "paths": ["/v1/payments"]}
+
+
+def test_unpromoted_prod_pin_is_an_error(repo):
+    edit(repo / "products/payment-api/releases.yaml", lambda d: d["promoted"].pop("2.5.0"))
+    with pytest.raises(rg.RenderError, match="has not been promoted"):
+        render(repo)
+
+
+def test_nonprod_deploys_by_tag(repo):
+    assert "digest" not in render(repo)[f"{G}/uat/products/acme-corp-payment-api-uat.yaml"]["image"]
 
 
 def test_nonprod_uses_build_registry_and_connection_name(repo):

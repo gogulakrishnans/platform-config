@@ -221,7 +221,10 @@ def _sql_headroom(repo: Repo, sql_name: str, exclude: str) -> int:
 
 
 def render_block(placement: dict) -> str:
-    lines = ["  placement:                           # written back by the placement job, never hand-edited"]
+    lines = [
+        "  placement:                           # written back by the placement job, never hand-edited",
+        "    # keyed by environment group: dev and stage are separate environments in the devstage cell",
+    ]
     if placement.get("dedicated"):
         lines.append("    dedicated: true")
         return "\n".join(lines) + "\n"
@@ -242,14 +245,14 @@ def write_back(path: Path, placement: dict) -> bool:
     start = next((i for i, l in enumerate(lines) if l.startswith("  placement:")), None)
     if start is not None:
         end = start + 1
-        while end < len(lines) and (lines[end].startswith("    ") or not lines[end].strip()):
+        while end < len(lines) and (lines[end].startswith("    ") or not lines[end].strip()):  # includes the comment
             end += 1
         new = "".join(lines[:start]) + block + "".join(lines[end:])
     else:
         anchor = next((i for i, l in enumerate(lines) if l.startswith("  contacts:")), len(lines))
         new = "".join(lines[:anchor]) + block + "".join(lines[anchor:])
     if new != text:
-        path.write_text(new, encoding="utf-8")
+        path.write_text(new, encoding="utf-8", newline="\n")
         return True
     return False
 

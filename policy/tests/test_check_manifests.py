@@ -10,7 +10,7 @@ sys.modules["check_manifests"] = cm
 spec.loader.exec_module(cm)
 
 LABELS = {
-    "customer": "acme-corp", "environment": "prod", "env-group": "prod",
+    "customer": "acme-corp", "environment": "uat", "env-group": "uat",
     "product": "payment", "region-role": "primary", "managed-by": "argocd",
 }
 SECURE = {
@@ -36,6 +36,15 @@ def rules(findings):
 
 def test_compliant_workload_passes():
     assert cm.check([workload()]) == []
+
+
+def test_prod_requires_digest():
+    def prod(w):
+        for lbl in (w["metadata"]["labels"], w["spec"]["template"]["metadata"]["labels"]):
+            lbl.update({"environment": "prod", "env-group": "prod"})
+        return w
+    assert rules(cm.check([prod(workload())])) == ["K8S-IMG002"]
+    assert cm.check([prod(workload(image="r.example/app:1.2.3@sha256:" + "b" * 64))]) == []
 
 
 def test_missing_label_on_workload_and_template():

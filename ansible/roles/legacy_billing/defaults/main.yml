@@ -1,0 +1,7 @@
+---
+legacy_billing_version: "{{ version | default('0.0.0') }}"
+legacy_billing_artifact_uri: "{{ artifact_uri | default('') }}"
+legacy_billing_packages:
+  - ca-certificates
+  - openjdk-17-jre-headless
+  - google-guest-agent

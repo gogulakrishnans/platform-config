@@ -130,8 +130,9 @@ module "cluster" {
   node_pools = {
     default = {
       machine_type = local.defaults.machineType
-      min_nodes    = each.value.role == "dr" && !contains(local.hot_cells, each.value.cell) ? local.defaults.drMinNodes : local.defaults.minNodes
-      max_nodes    = local.defaults.maxNodes
+      # DR clusters idle at the minimum unless the cell has hot-standby customers or has failed over.
+      min_nodes = each.value.role == "dr" && !contains(local.hot_cells, each.value.cell) && !each.value.dr_active ? local.defaults.drMinNodes : local.defaults.minNodes
+      max_nodes = local.defaults.maxNodes
     }
   }
   labels = each.value.role == "dr" ? module.labels_dr.labels : module.labels.labels

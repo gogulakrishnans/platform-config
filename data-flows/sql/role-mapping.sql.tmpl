@@ -1,0 +1,31 @@
+-- Seed-down role mapping (architecture §9 step 5, verification V10). Runs on the scratch instance
+-- after verification. The dump must reference only the target environment's login, because the
+-- non-prod import runs as that login and every owner/grantee in the dump must exist there.
+--
+--   {{source_login}}  e.g. acme-corp-prod@pfx-compute-prod.iam   (owner in prod)
+--   {{target_login}}  e.g. acme-corp-uat@pfx-compute-uat.iam     (IAM login created by L3 in the target)
+--   {{database}}      the scratch copy of the prod database
+
+DO $roles$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{{target_login}}') THEN
+    CREATE ROLE "{{target_login}}" NOLOGIN;
+  END IF;
+END
+$roles$;
+
+REASSIGN OWNED BY "{{source_login}}" TO "{{target_login}}";
+GRANT CONNECT, TEMPORARY ON DATABASE "{{database}}" TO "{{target_login}}";
+REVOKE ALL ON DATABASE "{{database}}" FROM "{{source_login}}";
+
+-- Record where the data came from (read by the target's bootstrap job and by operators).
+CREATE SCHEMA IF NOT EXISTS _platform;
+CREATE TABLE IF NOT EXISTS _platform.clone_metadata (
+    run_id        text PRIMARY KEY,
+    source_env    text NOT NULL,
+    target_env    text NOT NULL,
+    source_versions jsonb NOT NULL,
+    sanitized_at  timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO _platform.clone_metadata (run_id, source_env, target_env, source_versions)
+VALUES ('{{run_id}}', 'prod', '{{target_env}}', '{{source_versions}}'::jsonb);

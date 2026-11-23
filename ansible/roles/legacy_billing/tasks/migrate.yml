@@ -1,0 +1,9 @@
+---
+# Runs once per rollout on a single instance (expand phase): old and new versions both work afterwards.
+- name: Run the schema migration from one instance
+  ansible.builtin.command:
+    cmd: "{{ billing_home }}/bin/legacy-billing migrate up --target-version {{ legacy_billing_version }}"
+  run_once: true
+  become_user: "{{ billing_user }}"
+  register: legacy_billing_migration
+  changed_when: "'applied' in legacy_billing_migration.stdout"

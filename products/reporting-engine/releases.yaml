@@ -1,0 +1,7 @@
+# Written by the image promotion pipeline (ci-templates/github/promote-image.yml). Do not edit.
+# Promoted releases: version -> digest in the prod Artifact Registry (attested "promoted" for
+# Binary Authorization). A prod pin in customers/*/products.yaml must be listed here
+# (scripts/validate-registry.py CUS006); prod GKE releases deploy by this digest.
+promoted:
+  "1.8.2": sha256:87629c3cfb51acd0672e4405ee74107f17266215b80ccc5fce3127b78598ec28
+  "1.9.0": sha256:5d9d935347971359fc00fdcc23b6841ce388b187c4717606dbdffdc400953fec

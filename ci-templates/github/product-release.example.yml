@@ -1,0 +1,53 @@
+# Example .github/workflows/release.yml for a product repository on GitHub.
+# A release tag builds, scans and signs the image on the non-prod pool, then asks platform-config to
+# promote it by digest (release managers approve the promote-image environment there).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make test
+
+  build-sign:
+    needs: test
+    runs-on: [self-hosted, linux, pool-devstage]
+    environment: build
+    outputs:
+      digest: ${{ steps.bs.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.BUILDER_SERVICE_ACCOUNT }}
+      - id: bs
+        uses: example-org/platform-config/ci-templates/github/build-sign@0000000000000000000000000000000000000000 # pin to a platform-config release commit
+        with:
+          product: payment-api
+          version: ${{ github.ref_name }}
+          registry: ${{ vars.NONPROD_REGISTRY }}
+          attestor: ${{ vars.ATTESTOR_BUILT }}
+          key-version: ${{ vars.ATTESTOR_KEY_VERSION }}
+
+  request-promotion:
+    needs: build-sign
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask platform-config to promote by digest
+        env:
+          GH_TOKEN: ${{ secrets.PLATFORM_DISPATCH_TOKEN }}   # fine-grained token: actions:write on platform-config only
+          VERSION: ${{ github.ref_name }}
+          DIGEST: ${{ needs.build-sign.outputs.digest }}
+        run: |
+          gh workflow run promote-image.yml -R example-org/platform-config \
+            -f product=payment-api -f version="${VERSION#v}" -f digest="$DIGEST"

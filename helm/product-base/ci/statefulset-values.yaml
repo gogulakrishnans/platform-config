@@ -1,0 +1,38 @@
+# CI fixture (rendered by scripts/gitops-check.py): the StatefulSet path of product-base, using the
+# document-index catalog entry. No example customer enables it, so the GitOps index has no
+# Application for it; this fixture keeps the stateful templates covered by lint, kubeconform and policy.
+argocd: { name: ci-docindex }
+customer: acme-corp
+environment: prod
+envGroup: prod
+regionRole: primary
+product: { name: document-index, shortCode: docindex }
+image:
+  registry: us-docker.pkg.dev/pfx-platform-prod/products
+  name: document-index
+  tag: 1.2.0
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+port: 8080
+replicas: { min: 3, max: 6 }
+resources: { cpu: "2", memory: 4Gi }
+database:
+  enabled: true
+  name: acme_corp_prod
+  schema: docindex
+  user: acme-corp-prod@pfx-compute-prod.iam
+  impersonate: acme-corp-prod@pfx-compute-prod.iam.gserviceaccount.com
+  endpoint: sql-prod-us-east1-01.write.example
+platformEnv:
+  GCS_BUCKET: pfx-acme-corp-docindex-prod
+  DATA_PROJECT: pfx-data-prod
+config: { shards: 8 }
+ingress:
+  hosts: [acme-corp.platform.example]
+  paths: [/v1/search]
+persistence:
+  enabled: true
+  size: 50Gi
+  storageClass: sc-acme-corp-prod
+migration:
+  enabled: true
+  command: ["/app/document-index", "migrate", "up"]

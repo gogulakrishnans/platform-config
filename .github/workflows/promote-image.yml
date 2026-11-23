@@ -1,0 +1,66 @@
+# Image promotion by digest (architecture §7, verification V11): the promoter on the prod pool copies
+# a built-and-signed image from the non-prod registry to the prod registry BY DIGEST, attests it as
+# "promoted" (the prod Binary Authorization policy requires that attestation), and opens a PR that
+# records the digest in products/<product>/releases.yaml. A prod pin is valid only once that PR merges
+# (scripts/validate-registry.py CUS006), and prod GKE releases deploy by that digest.
+name: promote-image
+
+# Started by a product repository's release workflow (ci-templates/github/product-release.example.yml)
+# or by hand. Product repos can only dispatch it; the copy and the attestation run here, on the prod
+# pool, behind the promote-image environment's reviewers.
+on:
+  workflow_dispatch:
+    inputs:
+      product: { description: catalog product name, required: true }
+      version: { description: semver release (no leading v), required: true }
+      digest: { description: "sha256:... from build-sign", required: true }
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  promote:
+    runs-on: [self-hosted, linux, pool-prod]
+    environment: promote-image          # required reviewers (release managers)
+    env:
+      SRC: ${{ vars.NONPROD_REGISTRY }}
+      DST: ${{ vars.PROD_REGISTRY }}
+      ATTESTOR: ${{ vars.ATTESTOR_PROMOTED }}
+      KMS_KEY_VERSION: ${{ vars.ATTESTOR_PROMOTED_KEY_VERSION }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.PROMOTER_SERVICE_ACCOUNT }}   # promoter@<platform-prod>
+      - name: Validate inputs
+        env:
+          PRODUCT: ${{ inputs.product }}
+          VERSION: ${{ inputs.version }}
+          DIGEST: ${{ inputs.digest }}
+        run: |
+          [ -f "products/${PRODUCT}/product.yaml" ] || { echo "::error::unknown product"; exit 1; }
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::bad version"; exit 1; }
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "::error::bad digest"; exit 1; }
+      - name: Copy by digest, verify, attest "promoted"
+        env:
+          PRODUCT: ${{ inputs.product }}
+          DIGEST: ${{ inputs.digest }}
+        run: ci-templates/scripts/promote-by-digest.sh "$PRODUCT" "$DIGEST"
+      - name: Record the promoted digest
+        env:
+          PRODUCT: ${{ inputs.product }}
+          VERSION: ${{ inputs.version }}
+          DIGEST: ${{ inputs.digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="promote/${PRODUCT}-${VERSION}"
+          git switch -c "$branch"
+          printf '  "%s": %s\n' "$VERSION" "$DIGEST" >> "products/${PRODUCT}/releases.yaml"
+          git config user.name "platform-bot"
+          git config user.email "platform-bot@users.noreply.github.com"
+          git commit -am "release: promote ${PRODUCT} ${VERSION} (${DIGEST})"
+          git push -u origin "$branch"
+          gh pr create --title "Promote ${PRODUCT} ${VERSION}" --body "Promoted by digest ${DIGEST} (attested). Merging allows prod pins of ${VERSION}."

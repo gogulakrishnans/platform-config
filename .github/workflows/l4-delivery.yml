@@ -1,0 +1,69 @@
+# L4 delivery after a version pin changes in customers/*/products.yaml (architecture §13, §17).
+#   GKE        nothing to run: ArgoCD syncs the new pin from the GitOps index (Argo Rollouts canary);
+#              this workflow waits for the Applications to become Healthy and reports.
+#   Cloud Run  new revision with no traffic, then 10 -> 25 -> 50 -> 100 with an SLO check per step.
+#   MIG        new instance template from the promoted image, Ansible pre-steps (migrations), then a
+#              rolling update with a 10% canary.
+# Runs on the self-hosted pool of the target environment group; prod needs the `deliver-prod` approval.
+name: l4-delivery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - customers/*/products.yaml
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: l4-delivery
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      pins: ${{ steps.pins.outputs.pins }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - id: pins
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          python scripts/changed-pins.py --base "$BEFORE" > pins.json
+          jq -r '.[] | "- \(.customer)/\(.product)/\(.environment): \(.from) -> \(.to) (\(.runtime))"' pins.json >> "$GITHUB_STEP_SUMMARY"
+          echo "pins=$(jq -c . pins.json)" >> "$GITHUB_OUTPUT"
+
+  deliver:
+    needs: detect
+    if: needs.detect.outputs.pins != '[]'
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        pin: ${{ fromJson(needs.detect.outputs.pins) }}
+    runs-on: [self-hosted, linux, "pool-${{ matrix.pin.environment == 'prod' && 'prod' || matrix.pin.environment == 'uat' && 'uat' || 'devstage' }}"]
+    environment: ${{ matrix.pin.environment == 'prod' && 'deliver-prod' || 'deliver-nonprod' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SERVICE_ACCOUNT }}
+      - name: GKE (ArgoCD)
+        if: matrix.pin.runtime == 'gke'
+        run: ci-templates/scripts/argocd-wait.sh "${{ matrix.pin.customer }}" "${{ matrix.pin.product }}" "${{ matrix.pin.environment }}"
+      - name: Cloud Run canary
+        if: matrix.pin.runtime == 'cloud-run'
+        run: ci-templates/scripts/cloud-run-canary.sh "${{ matrix.pin.customer }}" "${{ matrix.pin.product }}" "${{ matrix.pin.environment }}" "${{ matrix.pin.to }}"
+      - name: MIG rolling update
+        if: matrix.pin.runtime == 'mig'
+        run: ci-templates/scripts/mig-rolling-update.sh "${{ matrix.pin.customer }}" "${{ matrix.pin.product }}" "${{ matrix.pin.environment }}" "${{ matrix.pin.to }}"

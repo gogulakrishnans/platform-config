@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform.example/schemas/products.schema.json",
+  "title": "CustomerProducts (customers/<customer>/products.yaml)",
+  "description": "Products enabled for a customer, with a version pin per environment. Support window, dependencies and variant opt-in are checked by scripts/validate-registry.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "$defs": {
+    "pin": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$" },
+    "env": { "enum": ["dev", "stage", "uat", "prod"] }
+  },
+  "properties": {
+    "apiVersion": { "const": "platform.example/v1" },
+    "kind": { "const": "CustomerProducts" },
+    "metadata": {
+      "type": "object", "additionalProperties": false, "required": ["name"],
+      "properties": { "name": { "type": "string" } }
+    },
+    "spec": {
+      "type": "object", "additionalProperties": false, "required": ["products"],
+      "properties": {
+        "products": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9-]{1,40}$" },
+          "additionalProperties": {
+            "type": "object", "additionalProperties": false, "required": ["versions"],
+            "properties": {
+              "versions": {
+                "type": "object", "additionalProperties": false, "required": ["dev", "stage", "uat", "prod"],
+                "properties": { "dev": { "$ref": "#/$defs/pin" }, "stage": { "$ref": "#/$defs/pin" }, "uat": { "$ref": "#/$defs/pin" }, "prod": { "$ref": "#/$defs/pin" } }
+              },
+              "overrides": {
+                "type": "object", "additionalProperties": false,
+                "propertyNames": { "$ref": "#/$defs/env" },
+                "patternProperties": { "^(dev|stage|uat|prod)$": { "type": "object" } }
+              },
+              "config": { "type": "object" },
+              "decommission": { "type": "boolean", "description": "phase 1 of product removal (runbooks/day-2.md)" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,139 @@
+# Repo gate: every offline check, on every PR (including forks) and on main.
+# Public-repo safe: GitHub-hosted runners only, read-only token, no secrets, no cloud credentials.
+name: repo-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repo-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  TF_VERSION: "1.17.2"
+  TFLINT_VERSION: "v0.66.0"
+  HELM_VERSION: "v3.22.1"          # Helm 3 (clarification C4)
+  KUBECONFORM_VERSION: "v0.8.0"
+  PACKER_VERSION: "1.16.2"
+
+jobs:
+  registry:
+    name: registry, placement and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-dev.txt
+      - name: Registry schemas and composition rules
+        run: python scripts/validate-registry.py
+      - name: Workflow safety (pinned actions, no self-hosted on PRs, no script injection)
+        run: python policy/check_workflows.py
+      - name: Generated files are in sync (Terraform roots, GitOps index, catalog)
+        run: |
+          python scripts/generate-layers.py --check
+          python scripts/render-gitops.py --check
+          python scripts/catalog-report.py --check --json version-matrix.json
+      - name: Unit tests (placement, generators, bootstrap, data flows, policy checkers)
+        run: python -m pytest -q scripts db-bootstrap data-flows policy tests/isolation
+      - name: Version matrix
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: version-matrix
+          path: version-matrix.json
+
+  terraform:
+    name: terraform fmt, validate, test (mock providers), lint, policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-dev.txt
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - name: fmt -check, init -backend=false, validate, terraform test
+        run: python scripts/terraform-check.py
+      - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6.3.2
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+      - name: tflint
+        run: |
+          tflint --init --config "$PWD/.tflint.hcl"
+          tflint --recursive --config "$PWD/.tflint.hcl"
+      - name: Static policy (labels, IAM allowlist, no public IPs, private clusters)
+        run: python policy/check_terraform.py
+
+  helm:
+    name: helm lint, ApplicationSets, template, kubeconform, manifest policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements-dev.txt
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Install kubeconform
+        run: |
+          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin kubeconform
+      - name: GitOps gate (and rendered examples up to date)
+        run: python scripts/gitops-check.py --check
+
+  instance-group:
+    name: packer validate, ansible-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: hashicorp/setup-packer@ce93c3c08a6c2ff2275bf4b54ff0d9a75f6c9789 # v3.4.0
+        with:
+          version: ${{ env.PACKER_VERSION }}
+      - name: packer init + validate
+        working-directory: packer
+        run: |
+          packer init .
+          packer validate -var-file=example.pkrvars.hcl .
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: ansible-lint
+        run: |
+          pip install -r ansible/requirements-lint.txt
+          ansible-galaxy collection install -r ansible/requirements.yml
+          ansible-lint ansible/
+
+  docs:
+    name: diagrams and workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Every diagram has its SVG
+        run: python scripts/render-diagrams.py --check
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+
+  secret-scan:
+    name: secret scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --redact --verbose --config /repo/.gitleaks.toml

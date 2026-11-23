@@ -1,0 +1,15 @@
+---
+profile: production
+exclude_paths:
+  - .github/
+  - examples/
+  - argocd/
+  - helm/
+  - infrastructure/
+  - customers/
+  - products/
+  - inventory/
+  - docs/
+  - data-flows/
+  - ci-templates/
+  - .tflint.hcl

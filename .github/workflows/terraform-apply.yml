@@ -1,0 +1,101 @@
+# Apply after merge to main, only for the states the change touches (changed-path detection), in
+# dependency order: L1 -> L2 region -> L3 keys -> L3 env (+ db bootstrap) -> L3 exchange -> L2 edge.
+# Never triggered by pull requests, so fork PRs can never reach the self-hosted pools or GCP.
+name: terraform-apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - infrastructure/**
+      - customers/**
+      - products/**
+      - inventory/platform.yaml
+      - inventory/regions.yaml
+  # Fleet rollout of a change that touches more states than one matrix can hold (> 250 in a wave),
+  # e.g. a shared-module change: run once per shard, 0/4 .. 3/4.
+  workflow_dispatch:
+    inputs:
+      base:
+        description: commit to diff from (the change is base..HEAD of main)
+        required: true
+      shard:
+        description: i/n shard of the affected states
+        default: "0/1"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-apply
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      L1: ${{ steps.waves.outputs.L1 }}
+      L2-region: ${{ steps.waves.outputs.L2-region }}
+      L3-keys: ${{ steps.waves.outputs.L3-keys }}
+      L3-env: ${{ steps.waves.outputs.L3-env }}
+      L3-shared: ${{ steps.waves.outputs.L3-shared }}
+      L2-edge: ${{ steps.waves.outputs.L2-edge }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - id: waves
+        env:
+          BEFORE: ${{ inputs.base || github.event.before }}
+          SHARD: ${{ inputs.shard || '0/1' }}
+        run: |
+          git diff --name-only "$BEFORE" "$GITHUB_SHA" | python scripts/changed-states.py --shard "$SHARD" > plan.json
+          if [ "$(jq '.overMatrixLimit | length' plan.json)" -gt 0 ]; then
+            echo "::error::waves $(jq -c .overMatrixLimit plan.json) exceed the matrix limit; run this workflow manually with shards"
+            exit 1
+          fi
+          for w in L1 L2-region L3-keys L3-env L3-shared L2-edge; do
+            echo "$w=$(jq -c --arg w "$w" '.waves[] | select(.wave == $w) | .states' plan.json)" >> "$GITHUB_OUTPUT"
+          done
+          jq -r '.waves[] | "\(.wave): \(.count) state(s)"' plan.json >> "$GITHUB_STEP_SUMMARY"
+
+  l1:
+    needs: detect
+    if: needs.detect.outputs.L1 != '[]'
+    uses: ./.github/workflows/_terraform-wave.yml
+    with: { states: "${{ needs.detect.outputs.L1 }}" }
+
+  l2-region:
+    needs: [detect, l1]
+    if: ${{ !cancelled() && !failure() && needs.detect.outputs.L2-region != '[]' }}
+    uses: ./.github/workflows/_terraform-wave.yml
+    with: { states: "${{ needs.detect.outputs.L2-region }}" }
+
+  l3-keys:
+    needs: [detect, l2-region]
+    if: ${{ !cancelled() && !failure() && needs.detect.outputs.L3-keys != '[]' }}
+    uses: ./.github/workflows/_terraform-wave.yml
+    with: { states: "${{ needs.detect.outputs.L3-keys }}" }
+
+  l3-env:
+    needs: [detect, l3-keys]
+    if: ${{ !cancelled() && !failure() && needs.detect.outputs.L3-env != '[]' }}
+    uses: ./.github/workflows/_terraform-wave.yml
+    with: { states: "${{ needs.detect.outputs.L3-env }}", bootstrap: true }
+
+  l3-shared:
+    needs: [detect, l3-env]
+    if: ${{ !cancelled() && !failure() && needs.detect.outputs.L3-shared != '[]' }}
+    uses: ./.github/workflows/_terraform-wave.yml
+    with: { states: "${{ needs.detect.outputs.L3-shared }}" }
+
+  l2-edge:
+    needs: [detect, l3-shared]
+    if: ${{ !cancelled() && !failure() && needs.detect.outputs.L2-edge != '[]' }}
+    uses: ./.github/workflows/_terraform-wave.yml
+    with: { states: "${{ needs.detect.outputs.L2-edge }}" }

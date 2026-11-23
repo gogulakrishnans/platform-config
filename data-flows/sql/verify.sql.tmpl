@@ -1,0 +1,20 @@
+-- Seed-down verification for one product schema. Every query returns the number of rows that
+-- still look like production data; the orchestrator fails the run (and alerts) unless all are 0.
+-- Rendered per schema ({{schema}}).
+
+SELECT 'sessions_not_empty' AS check, count(*) AS violations FROM "{{schema}}".sessions
+UNION ALL
+SELECT 'tokens_not_empty', count(*) FROM "{{schema}}".tokens
+UNION ALL
+SELECT 'auth_secrets_present', count(*) FROM "{{schema}}".users
+ WHERE password_hash IS NOT NULL OR password_salt IS NOT NULL OR mfa_secret IS NOT NULL
+    OR mfa_backup_codes IS NOT NULL OR recovery_key IS NOT NULL OR security_answers IS NOT NULL
+UNION ALL
+SELECT 'emails_not_pseudonymized', count(*) FROM "{{schema}}".users
+ WHERE email IS NOT NULL AND email NOT LIKE '%@seed.invalid'
+UNION ALL
+SELECT 'phones_not_pseudonymized', count(*) FROM "{{schema}}".users
+ WHERE phone IS NOT NULL AND phone NOT LIKE '+1555%'
+UNION ALL
+SELECT 'address_or_national_id_present', count(*) FROM "{{schema}}".users
+ WHERE address IS NOT NULL OR national_id IS NOT NULL;

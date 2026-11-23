@@ -1,0 +1,48 @@
+---
+- name: Install runtime packages
+  ansible.builtin.apt:
+    name: "{{ legacy_billing_packages }}"
+    state: present
+    update_cache: true
+
+- name: Create the service user
+  ansible.builtin.user:
+    name: "{{ billing_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ billing_home }}"
+
+- name: Download the release bundle
+  ansible.builtin.command:
+    cmd: "gcloud storage cp {{ legacy_billing_artifact_uri }} /tmp/legacy-billing.tar.gz"
+    creates: /tmp/legacy-billing.tar.gz
+
+- name: Unpack the release
+  ansible.builtin.unarchive:
+    src: /tmp/legacy-billing.tar.gz
+    dest: "{{ billing_home }}"
+    remote_src: true
+    owner: "{{ billing_user }}"
+    group: "{{ billing_user }}"
+    mode: "0750"
+
+- name: Install the systemd unit
+  ansible.builtin.template:
+    src: legacy-billing.service.j2
+    dest: /etc/systemd/system/legacy-billing.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Enable the service (it starts at boot and reads its config from instance metadata)
+  ansible.builtin.systemd_service:
+    name: legacy-billing
+    enabled: true
+
+- name: Harden SSH (IAP only, no passwords)
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PasswordAuthentication"
+    line: "PasswordAuthentication no"
+    mode: "0600"

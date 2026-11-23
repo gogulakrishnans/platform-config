@@ -1,0 +1,21 @@
+# Review routing (architecture §17). Branch protection on main requires code-owner review.
+*                                   @example-org/platform-engineering
+# The project factory and anything that creates projects: extra approver (security).
+/infrastructure/modules/project-factory/   @example-org/platform-engineering @example-org/security
+/infrastructure/layers/L0-bootstrap/       @example-org/platform-engineering @example-org/security
+/infrastructure/layers/L1-foundation/      @example-org/platform-engineering @example-org/security
+/infrastructure/modules/vpc-sc/            @example-org/platform-engineering @example-org/security
+/policy/                                   @example-org/platform-engineering @example-org/security
+# Customers: Customer Success owns the files; placement and generated files are written by the bot.
+/customers/                         @example-org/customer-success @example-org/platform-engineering
+# Catalog: product teams own their Helm values; the platform owns every catalog entry and schema.
+# (The last matching rule wins, so the catalog rules come after the product-team rules.)
+/products/payment-api/              @example-org/team-payments
+/products/reporting-engine/         @example-org/team-insights
+/products/legacy-billing/           @example-org/team-billing
+/products/document-index/           @example-org/team-search
+/products/*/product.yaml            @example-org/platform-engineering
+/products/*/releases.yaml           @example-org/platform-engineering
+/products/_schema/                  @example-org/platform-engineering
+# Data flows touch production data: security reviews every change.
+/data-flows/                        @example-org/platform-engineering @example-org/security

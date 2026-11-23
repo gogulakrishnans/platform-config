@@ -1,0 +1,62 @@
+-- Seed-down sanitization for one product schema (architecture §9). Rendered by
+-- data-flows/seed-down/main.py per schema ({{schema}}) with a per-run salt ({{salt}}), and run on
+-- the scratch instance in data-prod, inside the prod perimeter, before anything leaves prod.
+--
+-- Covers the standard auth tables every product contains (brief assumption: users, sessions,
+-- tokens) and the common optional tables. Product-specific PII goes in
+-- products/<product>/data/sanitize.sql, which the orchestrator runs right after this template.
+-- Everything runs in one transaction: all or nothing.
+
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+SET LOCAL search_path TO "{{schema}}";
+
+-- 1. Sessions and tokens: truncated.
+TRUNCATE TABLE "{{schema}}".sessions, "{{schema}}".tokens RESTART IDENTITY CASCADE;
+
+-- 2. Auth secrets: hashes, salts, MFA, backup codes, recovery keys, security questions.
+UPDATE "{{schema}}".users SET
+    password_hash       = NULL,
+    password_salt       = NULL,
+    mfa_secret          = NULL,
+    mfa_backup_codes    = NULL,
+    recovery_key        = NULL,
+    security_answers    = NULL,
+    must_reset_password = TRUE;
+
+-- 3. PII: deterministic pseudonyms (joins stay stable; not reversible without the per-run salt,
+--    which is discarded with the scratch instance).
+UPDATE "{{schema}}".users SET
+    email       = 'user-' || substr(encode(digest(email || '{{salt}}', 'sha256'), 'hex'), 1, 16) || '@seed.invalid',
+    phone       = CASE WHEN phone IS NULL THEN NULL
+                       ELSE '+1555' || lpad((abs(hashtext(phone || '{{salt}}')) % 10000000)::text, 7, '0') END,
+    full_name   = 'User ' || substr(encode(digest(id::text || '{{salt}}', 'sha256'), 'hex'), 1, 8),
+    address     = NULL,
+    national_id = NULL;
+
+-- 4. Optional tables (only if the product has them): API keys -> TEST_ keys, webhook and OAuth
+--    secrets regenerated, third-party tokens nulled, payment tokens and provider IDs replaced.
+DO $sanitize$
+BEGIN
+  IF to_regclass('"{{schema}}".api_keys') IS NOT NULL THEN
+    UPDATE "{{schema}}".api_keys SET key = 'TEST_' || encode(gen_random_bytes(24), 'hex');
+  END IF;
+  IF to_regclass('"{{schema}}".webhooks') IS NOT NULL THEN
+    UPDATE "{{schema}}".webhooks SET secret = encode(gen_random_bytes(32), 'hex');
+  END IF;
+  IF to_regclass('"{{schema}}".oauth_clients') IS NOT NULL THEN
+    UPDATE "{{schema}}".oauth_clients SET client_secret = encode(gen_random_bytes(32), 'hex');
+  END IF;
+  IF to_regclass('"{{schema}}".integrations') IS NOT NULL THEN
+    UPDATE "{{schema}}".integrations SET access_token = NULL, refresh_token = NULL;
+  END IF;
+  IF to_regclass('"{{schema}}".payment_methods') IS NOT NULL THEN
+    UPDATE "{{schema}}".payment_methods SET
+      provider_token       = 'tok_test_' || substr(encode(digest(provider_token || '{{salt}}', 'sha256'), 'hex'), 1, 24),
+      card_fingerprint     = NULL,
+      provider_customer_id = 'cus_test_' || substr(encode(digest(id::text || '{{salt}}', 'sha256'), 'hex'), 1, 14);
+  END IF;
+END
+$sanitize$;
+
+COMMIT;

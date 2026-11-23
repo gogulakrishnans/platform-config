@@ -1,0 +1,51 @@
+# Template for product repositories on Bitbucket (architecture §15, Decision 17). Copy into the
+# product repo as bitbucket-pipelines.yml. Builds run on the shared self-hosted non-prod runners
+# (registered to the Bitbucket workspace) and authenticate to GCP with Bitbucket OIDC through the
+# `bitbucket` provider of the ci-pool workload identity pool (L0). No keys are stored in Bitbucket.
+#
+# Repository variables (not secrets): PRODUCT, GCP_WIF_AUDIENCE, GCP_WIF_PROVIDER,
+# BUILDER_SERVICE_ACCOUNT, NONPROD_REGISTRY, ATTESTOR_BUILT, ATTESTOR_KEY_VERSION, PLATFORM_CONFIG_REF
+# (a pinned commit of platform-config whose ci-templates/scripts the build uses).
+# Pull requests from forks run only the `test` step on Bitbucket-hosted runners.
+
+image: gcr.io/google.com/cloudsdktool/google-cloud-cli:stable
+
+definitions:
+  steps:
+    - step: &test
+        name: Unit tests and lint
+        script:
+          - make test
+    - step: &build-sign
+        name: Build, scan and sign (non-prod registry)
+        runs-on: [self.hosted, linux, pool.devstage]
+        oidc: true
+        script:
+          # Exchange the Bitbucket OIDC token for GCP credentials (workload identity federation).
+          - echo "$BITBUCKET_STEP_OIDC_TOKEN" > /tmp/oidc-token
+          - >
+            gcloud iam workload-identity-pools create-cred-config "$GCP_WIF_PROVIDER"
+            --service-account="$BUILDER_SERVICE_ACCOUNT" --credential-source-file=/tmp/oidc-token
+            --output-file=/tmp/gcp-creds.json
+          - export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-creds.json
+          - git clone --filter=blob:none https://github.com/example-org/platform-config.git .platform
+          - git -C .platform checkout "$PLATFORM_CONFIG_REF"
+          - gcloud auth login --cred-file=/tmp/gcp-creds.json --quiet
+          - VERSION="${BITBUCKET_TAG#v}"
+          - .platform/ci-templates/scripts/build-sign.sh build "$PRODUCT" "$VERSION" . | tee build.out
+          - IMAGE="$(grep '^image=' build.out | cut -d= -f2-)"
+          - .platform/ci-templates/scripts/build-sign.sh scan "$IMAGE" HIGH
+          - .platform/ci-templates/scripts/build-sign.sh attest "$IMAGE" "$ATTESTOR_BUILT" "$ATTESTOR_KEY_VERSION"
+        services: [docker]
+
+pipelines:
+  pull-requests:
+    "**":
+      - step: *test
+  branches:
+    main:
+      - step: *test
+  tags:
+    "v*":                      # a release tag builds, scans and signs; promotion happens in platform-config
+      - step: *test
+      - step: *build-sign

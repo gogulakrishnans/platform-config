@@ -52,8 +52,35 @@ addons:
     chart: { repoURL: https://falcosecurity.github.io/charts, name: falco, version: 9.2.0 }
     values:
       driver: { kind: modern_ebpf }
-      falcosidekick: { enabled: false }
       tty: true
+      # Findings go to Cloud Logging (JSON on stdout) -> log-based alerts and the SCC pipeline
+      # (docs/security-operations.md).
+      falco:
+        json_output: true
+        priority: notice
+      falcosidekick: { enabled: false }
+      customRules:
+        platform-rules.yaml: |-
+          - macro: in_tenant_namespace
+            condition: (k8s.ns.labels.customer exists and k8s.ns.labels.customer != "shared")
+          - rule: Shell in a tenant container
+            desc: An interactive shell started in a customer workload (no exec is ever expected).
+            condition: spawned_process and container and in_tenant_namespace and proc.name in (bash, sh, zsh, ash, dash) and proc.tty != 0
+            output: "Shell in tenant container (ns=%k8s.ns.name pod=%k8s.pod.name cmd=%proc.cmdline user=%user.name)"
+            priority: CRITICAL
+            tags: [platform, tenant-isolation]
+          - rule: Tenant egress bypassing the egress gateway
+            desc: A tenant pod connects outside the cluster without going through the Istio egress gateway.
+            condition: outbound and container and in_tenant_namespace and not proc.name in (pilot-agent, envoy, cloud-sql-proxy) and not fd.snet in ("10.0.0.0/8", "100.64.0.0/10", "169.254.169.254/32", "199.36.153.4/30")
+            output: "Direct egress from tenant pod (ns=%k8s.ns.name pod=%k8s.pod.name dest=%fd.name)"
+            priority: WARNING
+            tags: [platform, egress]
+          - rule: Write below binary directories in a tenant container
+            desc: Tenant images run read-only; a write below /usr or /bin means tampering.
+            condition: open_write and container and in_tenant_namespace and (fd.directory startswith /usr or fd.directory startswith /bin)
+            output: "Binary directory write (ns=%k8s.ns.name pod=%k8s.pod.name file=%fd.name)"
+            priority: CRITICAL
+            tags: [platform, integrity]
   - name: mesh
     namespace: istio-system
     wave: -20

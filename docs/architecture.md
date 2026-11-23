@@ -31,6 +31,8 @@
 | Risks | [§19](#19-risks-and-mitigations) | |
 | Clarifications of the brief | [§20](#20-clarifications-of-the-brief) | |
 | **Scenario traceability** | [§21](#21-scenario-traceability) | |
+| CI/CD and image promotion | [§22](#22-cicd) | [runners.md](diagrams/runners.md) |
+| Runbooks, roadmap, catalog | [runbooks/](runbooks/), [roadmap.md](roadmap.md), [catalog.md](catalog.md) | |
 
 ## At a glance
 
@@ -544,7 +546,7 @@ Diagram: [runners.md](diagrams/runners.md).
 | `env-group` | `devstage`, `uat`, `prod` (or `shared`) |
 | `product` | short code, or `platform` |
 | `region-role` | `primary`, `dr` |
-| `managed-by` | `terraform`, `argocd` |
+| `managed-by` | `terraform`, `argocd`; `packer` for golden images; `pipeline` for short-lived resources created by delivery or data-flow jobs (e.g. the seed-down scratch instance) |
 
 Every Terraform module takes a `labels` input built by a shared `locals` helper and merges it into every resource. A static check fails any module or chart that misses a key. Labels are for identification, operations, audits and offboarding. Customers are billed by subscription, so there is no per-customer cost engine. The billing export shows platform spend per project, group, region and product.
 
@@ -685,6 +687,9 @@ These resolve inconsistencies or gaps in the brief. None of them changes a locke
 | C18 | The brief has ApplicationSets generate Applications straight from `customer.yaml` and `products.yaml` | Generators cannot join the customer, the catalog and the inventory. `scripts/render-gitops.py` writes a generated index (one file per Application, which is also its last values layer), and the ApplicationSets read only that index. CI checks it is current, as it does for the Terraform roots (decisions #26). |
 | C19 | The brief says the tenant ApplicationSet "generates the customer's AppProject" | An ApplicationSet creates Applications, not AppProjects. The root chart renders the per-customer AppProjects from the same index. Tenant Applications run in a platform-owned project, because the tenant chart creates cluster-scoped objects (Namespace, StorageClass) that a customer project must not be allowed to create. |
 | C20 | Who holds the canary metrics, the egress routes and the gateway TLS | Canary analysis reads Istio metrics from Managed Prometheus through a query frontend, authorized by a Workload Identity principal (L1 IAM). Egress is split: the product chart owns the sidecar-to-gateway leg and the mesh add-on owns the gateway-to-host leg for the catalog's allowlist. LB-to-gateway TLS uses a cert-manager certificate (the external ALB does not validate backend certificates). |
+| C21 | The brief asks for "image promotion by digest" but no place records the digest | `products/<product>/releases.yaml` (written by the promotion workflow) maps each promoted version to its prod digest (or, for MIGs, the promoted image). A prod pin must be promoted, and prod GKE releases deploy by digest (§22, decisions #27). |
+| C22 | The brief's repo layout shows `helm/values/{products,environments,customers}` | Values layers sit next to their owners: `products/<p>/helm/values[-<env>].yaml` (product team) and `customers/<c>/helm/<p>/` (customer). CODEOWNERS routes each layer to its owner. The layering order is unchanged (§14). |
+| C23 | Promote-up writes to the shared bucket, which only the promoter may write | Three hops: the source pool exports into the source environment's bucket; after approval the promoter publishes to `shared/promote/`; the target pool imports. The shared bucket grants follow `sharedReference` or `promoteUp` (data-flows/README.md). |
 
 ## 21. Scenario traceability
 
@@ -700,18 +705,44 @@ These resolve inconsistencies or gaps in the brief. None of them changes a locke
 | S8. Shared infrastructure: GitHub/Bitbucket and Ansible runners | §15; [runners.md](diagrams/runners.md) |
 | Brief deliverable 1: architecture design (4 envs, multi-product/customer, version divergence, data sharing) | This document (§4, §6, §7, §9) + [decisions.md](decisions.md) |
 | Brief deliverable 2: three diagrams (Cloud Run, GKE, Instance Group) | [diagrams/cloud-run.md](diagrams/cloud-run.md), [diagrams/gke.md](diagrams/gke.md), [diagrams/instance-group.md](diagrams/instance-group.md) + `.svg` |
-| Brief deliverable 3: Terraform | `infrastructure/` (Phase 2), layers in §17 |
+| Brief deliverable 3: Terraform | `infrastructure/` (modules and layers L0-L3), layers in §17 |
 | Brief deliverable 4: Helm charts for GKE | `helm/tenant`, `helm/product-base`, `argocd/` (§14); rendered output in `examples/rendered/` |
-| Brief deliverable 5: public repository | Repo layout + CI (Phase 4); push only on request |
+| Brief deliverable 5: public repository | [README](../README.md), [CONTRIBUTING](../CONTRIBUTING.md), [LICENSE](../LICENSE), `.github/workflows/`, [checklist](checklist.md); pushed only on the owner's request |
 | D1 Architecture design + decisions + traceability | This document, [decisions.md](decisions.md), §21 |
 | D2 Three runtime diagrams (Mermaid + SVG) | `docs/diagrams/{gke,cloud-run,instance-group}.{md,svg}` |
-| D3 Terraform L0-L3, two example customers, fmt/validate/test | Phase 2 |
+| D3 Terraform L0-L3, two example customers, fmt/validate/test | `scripts/terraform-check.py` (fmt, validate, `terraform test` with mock providers), tflint, `policy/check_terraform.py` |
 | D4 Tenant + product base charts, lint/template/schema | `scripts/gitops-check.py`: helm lint, ApplicationSet expansion, helm template, kubeconform, manifest policy |
-| D5 Public repo, README, CI, no secrets | Phase 4 |
-| Goal: region-only onboarding | §3 placement |
-| Goal: prod HA/DR by default | §12 |
+| D5 Public repo, README, CI, no secrets | [`repo-gate.yml`](../.github/workflows/repo-gate.yml) (offline checks, gitleaks), public-repo-safe workflows (§22), [what-is-mocked.md](what-is-mocked.md) |
+| Goal: region-only onboarding | §3 placement; [`customer-pr.yml`](../.github/workflows/customer-pr.yml); [runbooks/onboarding.md](runbooks/onboarding.md) |
+| Goal: prod HA/DR by default | §12; [runbooks/dr.md](runbooks/dr.md) |
 | Goal: fixed project count | §2, §18 |
 | Goal: labels identify customer/product/env | §16 |
 | Goal: zero trust, zero downtime | §11, §13 |
-| Goal: Day 2 without disruption | §17 |
+| Goal: Day 2 without disruption | §17; [runbooks/day-2.md](runbooks/day-2.md), [runbooks/capacity.md](runbooks/capacity.md); changed-path apply waves; drift detection |
 | Goal: 5-engineer operability | §17 automation, §14 GitOps, §3 placement, §18 |
+| Phase 4 item 10: product catalog | `products/_schema`, 4 products across 3 runtimes, [catalog.md](catalog.md) (requirement matrix, dependency graph, version matrix), `scripts/validate-registry.py` |
+| Phase 4 item 11: data-sharing flows | [`data-flows/`](../data-flows/README.md): seed-down function, sanitize/verify/role-mapping SQL, BigQuery anonymization, import job, promote-up pipeline |
+| Phase 4 item 12: CI/CD | §22; `.github/workflows/`, `ci-templates/` (build-scan-sign, promotion by digest, canary per runtime), break-glass runbook |
+| Phase 4 item 13: Day 2, onboarding, regions, cells, DR | [runbooks/](runbooks/) |
+| Phase 4 item 14: roadmap | [roadmap.md](roadmap.md) |
+| Phase 4 item 15: README, CONTRIBUTING, checklist | [README](../README.md), [CONTRIBUTING](../CONTRIBUTING.md), [checklist.md](checklist.md) |
+
+## 22. CI/CD
+
+| Workflow | Trigger | Runs on | Does |
+|---|---|---|---|
+| `repo-gate` | every PR (forks included), main | GitHub-hosted, read-only token | All offline checks (registry, generators, Terraform, tflint, policy, Helm/ArgoCD, Packer, ansible-lint, actionlint, gitleaks) and the version-matrix artifact |
+| `customer-pr` | PR touching `customers/` or `products/`, same-repo branches only | GitHub-hosted, write to the PR branch | Validation, placement (exit 3 = capacity request), regenerate derived files, commit back, list the states to apply |
+| `terraform-apply` | push to main (changed paths); manual shards for fleet changes | Self-hosted pool of each state's group; `tf-<pool>` environment | Waves: L1 → L2 region → L3 keys → L3 env (+ bootstrap job) → L3 exchange → L2 edge |
+| `drift` | nightly, 1/7 of states | Self-hosted, `tf-<pool>-readonly` | `plan -detailed-exitcode`; a diff fails and alerts |
+| `l4-delivery` | push to main changing pins | Self-hosted pool of the environment; `deliver-prod` approval | GKE: wait for ArgoCD/Rollouts; Cloud Run: tagged revision 10→25→50→100 with SLO checks; MIG: new template + Ansible migration + 10% canary |
+| `promote-image` | dispatched by a product release | Prod pool, `promote-image` reviewers | Copy by digest, verify, attest `promoted`, PR to `products/<p>/releases.yaml` |
+| `promote-up` | manual | Source pool → prod pool (promoter) → target pool | Export, approval, publish to the shared bucket, import |
+| `isolation-tests` | every 6 h, before releases | Self-hosted, tester identity | Customer A's identities must be denied on customer B's containers |
+
+**Image promotion by digest (C21):** product pipelines build, scan and sign into the non-prod registry
+(`ci-templates/github/build-sign`, or the Bitbucket template). Only the promoter copies an image to the
+prod registry, by digest, and attests it `promoted`. The digest is recorded in `products/<p>/releases.yaml`.
+A prod pin must be listed there (validator CUS006). Prod GKE Applications render with that digest, and
+the manifest policy rejects a prod workload without one (K8S-IMG002). Binary Authorization admits only
+`promoted` images in prod (Decision 11; break-glass in [runbooks/break-glass.md](runbooks/break-glass.md)).

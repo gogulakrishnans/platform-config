@@ -298,8 +298,33 @@ spec:
     helm:
       releaseName: falco
       valuesObject:
+        customRules:
+          platform-rules.yaml: "- macro: in_tenant_namespace\n  condition: (k8s.ns.labels.customer\
+            \ exists and k8s.ns.labels.customer != \"shared\")\n- rule: Shell in a\
+            \ tenant container\n  desc: An interactive shell started in a customer\
+            \ workload (no exec is ever expected).\n  condition: spawned_process and\
+            \ container and in_tenant_namespace and proc.name in (bash, sh, zsh, ash,\
+            \ dash) and proc.tty != 0\n  output: \"Shell in tenant container (ns=%k8s.ns.name\
+            \ pod=%k8s.pod.name cmd=%proc.cmdline user=%user.name)\"\n  priority:\
+            \ CRITICAL\n  tags: [platform, tenant-isolation]\n- rule: Tenant egress\
+            \ bypassing the egress gateway\n  desc: A tenant pod connects outside\
+            \ the cluster without going through the Istio egress gateway.\n  condition:\
+            \ outbound and container and in_tenant_namespace and not proc.name in\
+            \ (pilot-agent, envoy, cloud-sql-proxy) and not fd.snet in (\"10.0.0.0/8\"\
+            , \"100.64.0.0/10\", \"169.254.169.254/32\", \"199.36.153.4/30\")\n  output:\
+            \ \"Direct egress from tenant pod (ns=%k8s.ns.name pod=%k8s.pod.name dest=%fd.name)\"\
+            \n  priority: WARNING\n  tags: [platform, egress]\n- rule: Write below\
+            \ binary directories in a tenant container\n  desc: Tenant images run\
+            \ read-only; a write below /usr or /bin means tampering.\n  condition:\
+            \ open_write and container and in_tenant_namespace and (fd.directory startswith\
+            \ /usr or fd.directory startswith /bin)\n  output: \"Binary directory\
+            \ write (ns=%k8s.ns.name pod=%k8s.pod.name file=%fd.name)\"\n  priority:\
+            \ CRITICAL\n  tags: [platform, integrity]"
         driver:
           kind: modern_ebpf
+        falco:
+          json_output: true
+          priority: notice
         falcosidekick:
           enabled: false
         tty: true
@@ -546,8 +571,33 @@ spec:
     helm:
       releaseName: falco
       valuesObject:
+        customRules:
+          platform-rules.yaml: "- macro: in_tenant_namespace\n  condition: (k8s.ns.labels.customer\
+            \ exists and k8s.ns.labels.customer != \"shared\")\n- rule: Shell in a\
+            \ tenant container\n  desc: An interactive shell started in a customer\
+            \ workload (no exec is ever expected).\n  condition: spawned_process and\
+            \ container and in_tenant_namespace and proc.name in (bash, sh, zsh, ash,\
+            \ dash) and proc.tty != 0\n  output: \"Shell in tenant container (ns=%k8s.ns.name\
+            \ pod=%k8s.pod.name cmd=%proc.cmdline user=%user.name)\"\n  priority:\
+            \ CRITICAL\n  tags: [platform, tenant-isolation]\n- rule: Tenant egress\
+            \ bypassing the egress gateway\n  desc: A tenant pod connects outside\
+            \ the cluster without going through the Istio egress gateway.\n  condition:\
+            \ outbound and container and in_tenant_namespace and not proc.name in\
+            \ (pilot-agent, envoy, cloud-sql-proxy) and not fd.snet in (\"10.0.0.0/8\"\
+            , \"100.64.0.0/10\", \"169.254.169.254/32\", \"199.36.153.4/30\")\n  output:\
+            \ \"Direct egress from tenant pod (ns=%k8s.ns.name pod=%k8s.pod.name dest=%fd.name)\"\
+            \n  priority: WARNING\n  tags: [platform, egress]\n- rule: Write below\
+            \ binary directories in a tenant container\n  desc: Tenant images run\
+            \ read-only; a write below /usr or /bin means tampering.\n  condition:\
+            \ open_write and container and in_tenant_namespace and (fd.directory startswith\
+            \ /usr or fd.directory startswith /bin)\n  output: \"Binary directory\
+            \ write (ns=%k8s.ns.name pod=%k8s.pod.name file=%fd.name)\"\n  priority:\
+            \ CRITICAL\n  tags: [platform, integrity]"
         driver:
           kind: modern_ebpf
+        falco:
+          json_output: true
+          priority: notice
         falcosidekick:
           enabled: false
         tty: true
@@ -794,8 +844,33 @@ spec:
     helm:
       releaseName: falco
       valuesObject:
+        customRules:
+          platform-rules.yaml: "- macro: in_tenant_namespace\n  condition: (k8s.ns.labels.customer\
+            \ exists and k8s.ns.labels.customer != \"shared\")\n- rule: Shell in a\
+            \ tenant container\n  desc: An interactive shell started in a customer\
+            \ workload (no exec is ever expected).\n  condition: spawned_process and\
+            \ container and in_tenant_namespace and proc.name in (bash, sh, zsh, ash,\
+            \ dash) and proc.tty != 0\n  output: \"Shell in tenant container (ns=%k8s.ns.name\
+            \ pod=%k8s.pod.name cmd=%proc.cmdline user=%user.name)\"\n  priority:\
+            \ CRITICAL\n  tags: [platform, tenant-isolation]\n- rule: Tenant egress\
+            \ bypassing the egress gateway\n  desc: A tenant pod connects outside\
+            \ the cluster without going through the Istio egress gateway.\n  condition:\
+            \ outbound and container and in_tenant_namespace and not proc.name in\
+            \ (pilot-agent, envoy, cloud-sql-proxy) and not fd.snet in (\"10.0.0.0/8\"\
+            , \"100.64.0.0/10\", \"169.254.169.254/32\", \"199.36.153.4/30\")\n  output:\
+            \ \"Direct egress from tenant pod (ns=%k8s.ns.name pod=%k8s.pod.name dest=%fd.name)\"\
+            \n  priority: WARNING\n  tags: [platform, egress]\n- rule: Write below\
+            \ binary directories in a tenant container\n  desc: Tenant images run\
+            \ read-only; a write below /usr or /bin means tampering.\n  condition:\
+            \ open_write and container and in_tenant_namespace and (fd.directory startswith\
+            \ /usr or fd.directory startswith /bin)\n  output: \"Binary directory\
+            \ write (ns=%k8s.ns.name pod=%k8s.pod.name file=%fd.name)\"\n  priority:\
+            \ CRITICAL\n  tags: [platform, integrity]"
         driver:
           kind: modern_ebpf
+        falco:
+          json_output: true
+          priority: notice
         falcosidekick:
           enabled: false
         tty: true

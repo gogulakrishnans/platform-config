@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://platform.example/schemas/data-sharing.schema.json",
+  "title": "DataSharingPolicy (customers/<customer>/data-sharing.yaml)",
+  "description": "The three flows inside one customer's boundary (architecture §9). Promote-up needs every enabled product to support config export (checked by scripts/validate-registry.py).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "properties": {
+    "apiVersion": { "const": "platform.example/v1" },
+    "kind": { "const": "DataSharingPolicy" },
+    "metadata": {
+      "type": "object", "additionalProperties": false, "required": ["name"],
+      "properties": { "name": { "type": "string" } }
+    },
+    "spec": {
+      "type": "object", "additionalProperties": false, "required": ["sharedReference", "promoteUp", "seedDown"],
+      "properties": {
+        "sharedReference": { "type": "boolean" },
+        "promoteUp": {
+          "type": "object", "additionalProperties": false, "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "approvals": { "type": "array", "items": { "enum": ["customer-success", "product-owner", "security"] }, "uniqueItems": true }
+          }
+        },
+        "seedDown": {
+          "type": "object", "additionalProperties": false, "required": ["targets"],
+          "properties": {
+            "targets": { "type": "array", "items": { "enum": ["dev", "stage", "uat"] }, "uniqueItems": true },
+            "mode": { "enum": ["sanitized"], "description": "raw copies of prod data never leave prod" },
+            "schedule": { "enum": ["daily", "weekly", "monthly", "on-demand", "none"], "description": "none when targets is empty" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+---
+# Instance Group path (architecture §5, §13). One playbook, three phases:
+#   bake         Packer build: hardening, runtime, release bundle (no customer data, no secrets)
+#   pre-rollout  Ansible runner pool, before a MIG rolling update: schema migration (expand phase)
+#   configure    Ansible runner pool, drift correction on running instances (scheduled)
+- name: Legacy billing ({{ phase }})
+  hosts: "{{ 'default' if phase == 'bake' else 'legacy_billing' }}"
+  become: true
+  gather_facts: true
+  vars:
+    phase: configure
+  roles:
+    - role: legacy_billing

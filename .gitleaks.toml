@@ -1,0 +1,16 @@
+# gitleaks configuration for the repo gate (secret-scan job). Default rules, plus allowlists for
+# values that are public by design: placeholder image digests and rendered examples.
+title = "platform-config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "public-by-design placeholders"
+paths = [
+  '''products/[^/]+/releases\.yaml''',      # promoted image digests (sha256 is not a secret)
+  '''examples/rendered/.*\.yaml''',         # rendered manifests of the example customers
+]
+regexes = [
+  '''sha256:[a-f0-9]{64}''',
+]

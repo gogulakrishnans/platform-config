@@ -1,0 +1,47 @@
+# Drift detection (architecture §17): a scheduled `terraform plan` of every state, in batches, on the
+# self-hosted pools with read-only identities. Each day covers one seventh of the states (a matrix
+# holds at most 256 jobs), so every state is checked weekly. A non-empty plan fails that state's job
+# and alerts; nothing is applied.
+name: drift
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      shard:
+        description: i/7 (default is today's weekday)
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: drift
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      states: ${{ steps.all.outputs.states }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      - id: all
+        env:
+          SHARD: ${{ inputs.shard }}
+        run: |
+          shard="${SHARD:-$(date -u +%w)/7}"
+          echo "states=$(python scripts/changed-states.py --all --shard "$shard" | jq -c '[.waves[].states[]]')" >> "$GITHUB_OUTPUT"
+
+  plan:
+    needs: detect
+    uses: ./.github/workflows/_terraform-wave.yml
+    with:
+      states: ${{ needs.detect.outputs.states }}
+      mode: drift

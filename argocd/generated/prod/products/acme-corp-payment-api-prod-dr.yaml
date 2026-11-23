@@ -19,6 +19,7 @@ product:
 image:
   registry: us-docker.pkg.dev/pfx-platform-prod/products
   tag: 2.5.0
+  digest: sha256:545bc8277b9aff9772f575db0b7c9a79c558fc78f81df3950bff004de51d979a
 port: 8080
 replicas:
   min: 1

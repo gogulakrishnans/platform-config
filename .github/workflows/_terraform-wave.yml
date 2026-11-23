@@ -1,0 +1,80 @@
+# Reusable: plan and apply one wave of Terraform states (called by terraform-apply.yml and drift.yml).
+# Each state runs on the self-hosted runner pool of its environment group (Decision 17), inside the
+# VPC-SC perimeter, authenticated through Workload Identity Federation: no keys, no secrets.
+# GitHub Environments hold the identities: `tf-<pool>` (apply SA, required reviewers; prod: two
+# approvers, main only) and `tf-<pool>-readonly` (plan/drift SA with viewer roles, no reviewers).
+name: _terraform-wave
+
+on:
+  workflow_call:
+    inputs:
+      states:
+        description: JSON list of {dir, prefix, pool} from scripts/changed-states.py
+        type: string
+        required: true
+      mode:
+        description: apply | plan | drift
+        type: string
+        default: apply
+      bootstrap:
+        description: run the database bootstrap job after each L3 environment state
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  state:
+    name: ${{ inputs.mode }} ${{ matrix.state.prefix }}
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        state: ${{ fromJson(inputs.states) }}
+    runs-on: [self-hosted, linux, "pool-${{ matrix.state.pool }}"]
+    environment: ${{ format('tf-{0}{1}', matrix.state.pool, inputs.mode == 'apply' && '' || '-readonly') }}
+    env:
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.TF_SERVICE_ACCOUNT }}   # environment-scoped variable
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.17.2"
+          terraform_wrapper: false
+      - name: init
+        working-directory: ${{ matrix.state.dir }}
+        run: terraform init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" -backend-config="prefix=${{ matrix.state.prefix }}"
+      - name: plan
+        id: plan
+        working-directory: ${{ matrix.state.dir }}
+        run: |
+          set +e
+          terraform plan -lock-timeout=10m -detailed-exitcode -out=tfplan
+          code=$?
+          echo "exitcode=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" -eq 1 ] && exit 1 || exit 0
+      - name: drift detected
+        if: inputs.mode == 'drift' && steps.plan.outputs.exitcode == '2'
+        run: |
+          echo "::error title=Drift in ${{ matrix.state.prefix }}::terraform plan shows changes that are not in Git"
+          exit 1
+      - name: apply
+        if: inputs.mode == 'apply' && steps.plan.outputs.exitcode == '2'
+        working-directory: ${{ matrix.state.dir }}
+        run: terraform apply -lock-timeout=10m tfplan
+      - name: database bootstrap job
+        if: inputs.mode == 'apply' && inputs.bootstrap
+        run: |
+          customer="$(basename "$(dirname "${{ matrix.state.dir }}")")"
+          env="$(basename "${{ matrix.state.dir }}")"
+          args="$(python3 scripts/bootstrap-args.py --customer "$customer" --env "$env")"
+          gcloud run jobs execute "$(jq -r .job <<<"$args")" \
+            --project "$(jq -r .project <<<"$args")" --region "$(jq -r .region <<<"$args")" \
+            --args="$(jq -r '.args | join(",")' <<<"$args")" --wait
