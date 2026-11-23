@@ -1,0 +1,8 @@
+apiVersion: platform.example/v1
+kind: DataSharingPolicy
+metadata:
+  name: acme-corp
+spec:
+  sharedReference: true
+  promoteUp: { enabled: true, approvals: [customer-success] }
+  seedDown:  { targets: [uat, stage], mode: sanitized, schedule: weekly }

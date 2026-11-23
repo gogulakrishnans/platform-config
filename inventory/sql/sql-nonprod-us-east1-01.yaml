@@ -1,0 +1,7 @@
+# Written by L2 (L2-region/us-east1/devstage). Do not edit by hand.
+name: sql-nonprod-us-east1-01
+side: nonprod
+region: us-east1
+project: data-nonprod
+status: active
+capacity: { maxCustomers: 40 }

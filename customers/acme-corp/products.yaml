@@ -1,0 +1,17 @@
+apiVersion: platform.example/v1
+kind: CustomerProducts
+metadata:
+  name: acme-corp
+spec:
+  products:
+    payment-api:                       # GKE, publishes payment events
+      versions: { dev: 2.6.0-beta.1, stage: 2.5.1, uat: 2.5.1, prod: 2.5.0 }
+      overrides:
+        prod: { replicas: { min: 4 } }
+      config:
+        currency: USD
+        settlementWindowHours: 24
+    reporting-engine:                  # Cloud Run, subscribes to payment-events
+      versions: { dev: 1.9.0, stage: 1.8.3, uat: 1.8.3, prod: 1.8.2 }
+      config:
+        defaultTimezone: America/New_York

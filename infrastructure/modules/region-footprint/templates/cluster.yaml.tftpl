@@ -1,0 +1,14 @@
+# Written by L2 (${layer}). Do not edit by hand.
+name: ${c.name}
+group: ${c.group}
+region: ${c.region}
+project: ${project}
+status: active
+slot: ${c.slot}
+capacity: { maxCustomers: ${c.capacity} }
+endpoint: ${endpoint}
+%{ if dr != null ~}
+drCluster: { name: ${dr.name}, region: ${dr.region}, slot: ${dr.slot}, endpoint: ${dr_endpoint} }
+drActive: ${c.dr_active}
+%{ endif ~}
+sqlInstances: [${join(", ", sql)}]

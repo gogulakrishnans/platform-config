@@ -1,0 +1,12 @@
+# Written by L2 (${layer}). Do not edit by hand.
+name: ${s.name}
+side: ${s.side}
+region: ${s.region}
+project: ${project}
+status: active
+capacity: { maxCustomers: ${s.capacity} }
+%{ if s.cell != null ~}
+cell: ${s.cell}
+replica: { name: ${s.dr.name}, region: ${s.dr.region} }
+writeEndpoint: ${write_endpoint}
+%{ endif ~}

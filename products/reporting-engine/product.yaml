@@ -1,0 +1,31 @@
+apiVersion: platform.example/v1
+kind: ProductDefinition
+metadata:
+  name: reporting-engine
+spec:
+  shortCode: reporting
+  owner: team-insights
+  runtime:
+    type: cloud-run
+    port: 8080
+  releases:
+    latest: "1.9"
+    supported: ["1.7", "1.8", "1.9"]
+    schemaCompatibility: { oldestCompatible: "1.7" }
+  data:
+    cloudSql: { required: true }           # schema "reporting"
+    storage: { required: true }
+    bigQuery: { required: true }
+    pubsub:
+      subscribe: [payment-events]          # {publisher shortCode}-{topic}; cloud-run only
+  persistentVolume: { required: false }
+  dependencies: { required: [payment-api] }
+  routing:
+    paths: ["/v1/reports", "/v1/reports/*"]
+  sizing:
+    dev:   { minInstances: 0, maxInstances: 2,  cpu: "1", memory: 512Mi }
+    stage: { minInstances: 0, maxInstances: 2,  cpu: "1", memory: 512Mi }
+    uat:   { minInstances: 0, maxInstances: 4,  cpu: "1", memory: 1Gi }
+    prod:  { minInstances: 1, maxInstances: 20, cpu: "2", memory: 2Gi }
+  compliance: { pii: true, pci: false }
+  supportsExport: true

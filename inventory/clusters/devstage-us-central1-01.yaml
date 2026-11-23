@@ -1,0 +1,10 @@
+# Written by L2 (L2-region/us-central1/devstage). Do not edit by hand.
+name: devstage-us-central1-01
+group: devstage
+region: us-central1
+project: compute-devstage
+status: active
+slot: 1
+capacity: { maxCustomers: 40 }
+endpoint: devstage-us-central1-01.us-central1.gke.goog.example
+sqlInstances: []

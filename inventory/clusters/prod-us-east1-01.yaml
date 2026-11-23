@@ -1,0 +1,12 @@
+# Written by L2 (L2-region/us-east1/prod). Do not edit by hand.
+name: prod-us-east1-01
+group: prod
+region: us-east1
+project: compute-prod
+status: active
+slot: 1
+capacity: { maxCustomers: 25 }
+endpoint: prod-us-east1-01.us-east1.gke.goog.example
+drCluster: { name: prod-us-east1-01-dr, region: us-central1, slot: 2, endpoint: prod-us-east1-01-dr.us-central1.gke.goog.example }
+drActive: false
+sqlInstances: [sql-prod-us-east1-01]

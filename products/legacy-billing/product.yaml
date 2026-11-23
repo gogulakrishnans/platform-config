@@ -1,0 +1,32 @@
+apiVersion: platform.example/v1
+kind: ProductDefinition
+metadata:
+  name: legacy-billing
+spec:
+  shortCode: billing
+  owner: team-billing
+  runtime:
+    type: mig
+    port: 8443
+    imageFamily: legacy-billing            # Packer image family (trusted image projects)
+    healthCheckPath: /healthz/ready
+  releases:
+    latest: "3.4"
+    supported: ["3.2", "3.3", "3.4"]
+    schemaCompatibility: { oldestCompatible: "3.2" }
+  data:
+    cloudSql: { required: true }           # schema "billing"
+    storage: { required: true }
+    bigQuery: { required: false }
+    pubsub: {}
+  persistentVolume: { required: false }    # MIGs are always stateless
+  dependencies: { required: [] }
+  routing:
+    paths: ["/v1/billing", "/v1/billing/*"]
+  sizing:
+    dev:   { machineType: e2-standard-2, minReplicas: 1, maxReplicas: 2 }
+    stage: { machineType: e2-standard-2, minReplicas: 1, maxReplicas: 2 }
+    uat:   { machineType: e2-standard-4, minReplicas: 3, maxReplicas: 3 }
+    prod:  { machineType: n2-standard-4, minReplicas: 3, maxReplicas: 9 }
+  compliance: { pii: true, pci: true }
+  supportsExport: false

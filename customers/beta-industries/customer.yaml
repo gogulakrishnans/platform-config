@@ -1,0 +1,20 @@
+apiVersion: platform.example/v1
+kind: CustomerConfig
+metadata:
+  name: beta-industries
+spec:
+  displayName: "Beta Industries"
+  accountId: "CUST-000002"
+  region:
+    primary: us-central1
+  options:
+    isolation: shared
+    dr: hot-standby                    # opt-in: DR cluster kept at full size (approved at contract)
+    edge: { customCertificate: false, customDomain: null }
+    variantImages: true                # opt-in: customer variant images allowed
+  placement:                           # written back by the placement job, never hand-edited
+    devstage: { cluster: devstage-us-central1-01, sqlInstance: sql-nonprod-us-central1-01 }
+    uat:      { cluster: uat-us-central1-01, sqlInstance: sql-nonprod-us-central1-01 }
+    prod:     { cluster: prod-us-central1-01, sqlInstance: sql-prod-us-central1-01, drCluster: prod-us-central1-01-dr }
+  contacts:
+    technical: platform-team@beta.example

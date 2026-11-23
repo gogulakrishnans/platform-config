@@ -1,0 +1,10 @@
+# Written by L2 (L2-region/us-east1/uat). Do not edit by hand.
+name: uat-us-east1-01
+group: uat
+region: us-east1
+project: compute-uat
+status: active
+slot: 3
+capacity: { maxCustomers: 40 }
+endpoint: uat-us-east1-01.us-east1.gke.goog.example
+sqlInstances: []

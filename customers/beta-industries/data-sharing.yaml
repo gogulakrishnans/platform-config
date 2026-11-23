@@ -1,0 +1,8 @@
+apiVersion: platform.example/v1
+kind: DataSharingPolicy
+metadata:
+  name: beta-industries
+spec:
+  sharedReference: true
+  promoteUp: { enabled: false, approvals: [] }        # legacy-billing has no export/import API
+  seedDown:  { targets: [], mode: sanitized, schedule: none }

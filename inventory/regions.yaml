@@ -1,0 +1,71 @@
+# Supported regions (platform-managed). Adding a region or a cell is an approved platform PR.
+# A prod region cannot be active without its DR pair.
+#   cidr     /16 per side for nodes, Cloud Run egress, MIGs, proxies, PSA (architecture §3)
+#   podCidr  /13 per side for pod and service secondary ranges
+#   cells    clusters to build; slot = per-cluster subnet index (0 = management cluster, hub region)
+#            prod drSlot is the slot used in the DR pair region; drActive flips the edge to DR (decisions #25)
+regions:
+  - name: us-east1
+    status: active
+    drPair: us-central1
+    multiRegion: us
+    zones: [us-east1-b, us-east1-c, us-east1-d]
+    cidr: { nonprod: 10.10.0.0/16, prod: 10.110.0.0/16 }
+    podCidr: { nonprod: 100.64.0.0/13, prod: 100.96.0.0/13 }
+    quotas:
+      cloudRunServices: { devstage: 1000, uat: 1000, prod: 1000 }
+    sqlInstances:
+      nonprod:
+        - { id: "01" }
+    cells:
+      devstage:
+        - { id: "01", slot: 1 }
+        - { id: "02", slot: 2 }
+      uat:
+        - { id: "01", slot: 3 }
+      prod:
+        - { id: "01", slot: 1, drSlot: 2, drActive: false }
+
+  - name: us-central1
+    status: active
+    drPair: us-east1
+    multiRegion: us
+    zones: [us-central1-a, us-central1-b, us-central1-c]
+    cidr: { nonprod: 10.11.0.0/16, prod: 10.111.0.0/16 }
+    podCidr: { nonprod: 100.72.0.0/13, prod: 100.104.0.0/13 }
+    quotas:
+      cloudRunServices: { devstage: 1000, uat: 1000, prod: 1000 }
+    sqlInstances:
+      nonprod:
+        - { id: "01" }
+    cells:
+      devstage:
+        - { id: "01", slot: 1 }
+      uat:
+        - { id: "01", slot: 2 }
+      prod:
+        - { id: "01", slot: 1, drSlot: 2, drActive: false }
+
+  - name: europe-west1
+    status: reserved                    # IP ranges reserved, nothing created yet
+    drPair: europe-west4
+    multiRegion: eu
+    zones: [europe-west1-b, europe-west1-c, europe-west1-d]
+    cidr: { nonprod: 10.20.0.0/16, prod: 10.120.0.0/16 }
+    podCidr: { nonprod: 100.80.0.0/13, prod: 100.112.0.0/13 }
+    quotas:
+      cloudRunServices: { devstage: 1000, uat: 1000, prod: 1000 }
+    sqlInstances: { nonprod: [] }
+    cells: { devstage: [], uat: [], prod: [] }
+
+  - name: europe-west4
+    status: reserved
+    drPair: europe-west1
+    multiRegion: eu
+    zones: [europe-west4-a, europe-west4-b, europe-west4-c]
+    cidr: { nonprod: 10.21.0.0/16, prod: 10.121.0.0/16 }
+    podCidr: { nonprod: 100.88.0.0/13, prod: 100.120.0.0/13 }
+    quotas:
+      cloudRunServices: { devstage: 1000, uat: 1000, prod: 1000 }
+    sqlInstances: { nonprod: [] }
+    cells: { devstage: [], uat: [], prod: [] }

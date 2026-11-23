@@ -1,0 +1,49 @@
+# ArgoCD instance for the ${group} environment group (architecture §14). Everything after this
+# install (add-ons, ApplicationSets, cluster registrations) is delivered by ArgoCD from Git.
+crds:
+  install: ${install_crds}
+  keep: true
+
+global:
+  domain: argocd-${group}.platform.internal
+
+configs:
+  params:
+    controller.sharding.algorithm: consistent-hashing
+    server.insecure: "false"
+  cm:
+    timeout.reconciliation: "0s"          # webhooks instead of polling
+    application.resourceTrackingMethod: annotation
+    exec.enabled: "false"
+    admin.enabled: "false"                # SSO only (configured by the app-of-apps)
+
+controller:
+  replicas: 3                             # sharded application controller
+  serviceAccount:
+    annotations:
+      iam.gke.io/gcp-service-account: ${service_account}
+
+server:
+  replicas: 2
+  serviceAccount:
+    annotations:
+      iam.gke.io/gcp-service-account: ${service_account}
+
+applicationSet:
+  replicas: 2
+  serviceAccount:
+    annotations:
+      iam.gke.io/gcp-service-account: ${service_account}
+
+repoServer:
+  replicas: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+
+redis-ha:
+  enabled: true
+
+redis:
+  enabled: false

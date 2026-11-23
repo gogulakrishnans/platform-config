@@ -1,0 +1,10 @@
+# Written by L2 (L2-region/us-east1/prod). Do not edit by hand.
+name: sql-prod-us-east1-01
+side: prod
+region: us-east1
+project: data-prod
+status: active
+capacity: { maxCustomers: 25 }
+cell: prod-us-east1-01
+replica: { name: sql-prod-us-east1-01-dr, region: us-central1 }
+writeEndpoint: sql-prod-us-east1-01.write.example

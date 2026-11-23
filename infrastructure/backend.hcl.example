@@ -1,0 +1,7 @@
+# Remote state backend TEMPLATE (documented, not configured with real values).
+# Copy to backend.hcl (git-ignored) and pass the state prefix per root:
+#
+#   terraform init -backend-config=../../backend.hcl -backend-config="prefix=L3/acme-corp/prod"
+#
+# Prefixes: L1/foundation · L2/<region>/<group> · L2-edge/<name> · L3/<customer>/<env|keys-nonprod|keys-prod|exchange>
+bucket = "pfx-tfstate"

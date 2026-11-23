@@ -1,0 +1,45 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Real values never enter the public repo
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+infrastructure/backend.hcl
+inventory/platform.private.yaml
+
+# Credentials
+*.json.key
+*-key.json
+credentials*.json
+.env
+.env.*
+
+# Python / tooling
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.tflint.d/
+
+# Helm
+helm/**/charts/*.tgz
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

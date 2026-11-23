@@ -1,0 +1,20 @@
+apiVersion: platform.example/v1
+kind: CustomerConfig
+metadata:
+  name: acme-corp                      # customer ID, max 20 characters
+spec:
+  displayName: "Acme Corporation"
+  accountId: "CUST-000001"
+  region:
+    primary: us-east1                  # the only onboarding input
+  options:                             # all default off
+    isolation: shared                  # shared | dedicated
+    dr: warm-standby                   # warm-standby (default) | hot-standby
+    edge: { customCertificate: false, customDomain: null }
+    variantImages: false
+  placement:                           # written back by the placement job, never hand-edited
+    devstage: { cluster: devstage-us-east1-01, sqlInstance: sql-nonprod-us-east1-01 }
+    uat:      { cluster: uat-us-east1-01, sqlInstance: sql-nonprod-us-east1-01 }
+    prod:     { cluster: prod-us-east1-01, sqlInstance: sql-prod-us-east1-01, drCluster: prod-us-east1-01-dr }
+  contacts:
+    technical: devops@acme.example

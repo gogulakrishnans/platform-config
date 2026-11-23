@@ -1,0 +1,70 @@
+# Platform-wide settings read by every Terraform layer and by the placement job.
+# PUBLIC REPOSITORY: every identifier below is a placeholder. Real values live in a
+# private overlay of this file that is never committed (see docs/what-is-mocked.md).
+apiVersion: platform.example/v1
+kind: PlatformConfig
+organization:
+  id: "000000000000"
+  domain: platform.example
+billingAccount: "000000-000000-000000"
+accessPolicy: "000000000000"          # VPC-SC access policy number
+bucketPrefix: pfx                     # global uniqueness prefix for GCS bucket names
+iac:                                  # created once by L0 (outside the fixed project set)
+  seedProject: { id: pfx-iac-seed, number: "200000000000" }
+  stateBucket: pfx-tfstate
+  serviceAccounts:                    # Terraform identities (keyless: impersonated via WIF / Workload Identity)
+    l1: tf-l1@pfx-iac-seed.iam.gserviceaccount.com
+    nonprod: tf-nonprod@pfx-iac-seed.iam.gserviceaccount.com
+    prod: tf-prod@pfx-iac-seed.iam.gserviceaccount.com
+hubRegion: us-east1                   # management clusters, Artifact Registry (non-prod), runners
+folders:
+  platform: "folders/100000000000"
+  network: "folders/100000000001"
+  compute: "folders/100000000002"
+  data: "folders/100000000003"
+  tools: "folders/100000000004"       # "Folder: Platform" in the hierarchy (platform-* projects)
+  security: "folders/100000000005"
+  dedicated: "folders/100000000006"
+projects:                             # project IDs are kept <= 30 chars (Cloud SQL IAM user names, V1)
+  net-nonprod:      { id: pfx-net-nonprod,      number: "200000000001", folder: network,  side: nonprod }
+  net-prod:         { id: pfx-net-prod,         number: "200000000002", folder: network,  side: prod }
+  compute-devstage: { id: pfx-compute-devstage, number: "200000000003", folder: compute,  side: nonprod }
+  compute-uat:      { id: pfx-compute-uat,      number: "200000000004", folder: compute,  side: nonprod }
+  compute-prod:     { id: pfx-compute-prod,     number: "200000000005", folder: compute,  side: prod }
+  data-nonprod:     { id: pfx-data-nonprod,     number: "200000000006", folder: data,     side: nonprod }
+  data-prod:        { id: pfx-data-prod,        number: "200000000007", folder: data,     side: prod }
+  data-exchange:    { id: pfx-data-exchange,    number: "200000000008", folder: data,     side: exchange }
+  platform-nonprod: { id: pfx-platform-nonprod, number: "200000000009", folder: tools,    side: nonprod }
+  platform-prod:    { id: pfx-platform-prod,    number: "200000000010", folder: tools,    side: prod }
+  security-nonprod: { id: pfx-security-nonprod, number: "200000000011", folder: security, side: nonprod }
+  security-prod:    { id: pfx-security-prod,    number: "200000000012", folder: security, side: prod }
+dns:
+  publicZone: platform.example        # prod: {customer}.platform.example
+  uatZone: uat.platform.example       # uat: {customer}.uat.platform.example
+  privateZone: platform.internal      # dev/stage: {customer}.{env}.platform.internal
+edge:
+  uatAllowlist: ["203.0.113.0/24", "198.51.100.0/24"]   # documentation ranges (RFC 5737)
+  blockedRegionCodes: []                             # ISO 3166 codes for Cloud Armor geo-blocking
+  rateLimit:
+    perClientIpPerMinute: 600
+    perCustomerPerMinute: 6000
+  internalCaPool: platform-internal                  # CAS pool in security-nonprod (hub region)
+groups:
+  devstage: { environments: [dev, stage], side: nonprod, computeProject: compute-devstage, dataProject: data-nonprod, securityProject: security-nonprod, platformProject: platform-nonprod, releaseChannel: RAPID }
+  uat:      { environments: [uat],        side: nonprod, computeProject: compute-uat,      dataProject: data-nonprod, securityProject: security-nonprod, platformProject: platform-nonprod, releaseChannel: REGULAR }
+  prod:     { environments: [prod],       side: prod,    computeProject: compute-prod,     dataProject: data-prod,    securityProject: security-prod,    platformProject: platform-prod,    releaseChannel: STABLE }
+capacityDefaults:                     # starting caps (tunable per cell in regions.yaml)
+  devstage: 40
+  uat: 40
+  prod: 25
+  sqlNonprod: 40
+  sqlProd: 25
+cellDefaults:
+  devstage: { machineType: e2-standard-8,  minNodes: 1, maxNodes: 10, sqlTier: db-custom-4-16384 }
+  uat:      { machineType: e2-standard-8,  minNodes: 1, maxNodes: 10 }
+  prod:     { machineType: n2-standard-8,  minNodes: 1, maxNodes: 20, sqlTier: db-perf-optimized-N-8, drMinNodes: 1 }
+github:
+  org: example-org
+  repo: platform-config
+bitbucket:
+  workspace: example-workspace

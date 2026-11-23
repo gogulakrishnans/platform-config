@@ -1,0 +1,33 @@
+apiVersion: platform.example/v1
+kind: ProductDefinition
+metadata:
+  name: payment-api
+spec:
+  shortCode: payment                       # max 12 characters, used in resource names
+  owner: team-payments
+  runtime:
+    type: gke
+    port: 8080
+  releases:
+    latest: "2.6"
+    supported: ["2.4", "2.5", "2.6"]       # N-2 support window (validator)
+    schemaCompatibility: { oldestCompatible: "2.4" }
+  data:
+    cloudSql: { required: true }           # schema "payment" in the customer's database
+    storage: { required: true }
+    bigQuery: { required: false }
+    pubsub:
+      publish: [events]                    # topic {customer}-payment-{env}-events
+  persistentVolume: { required: false }
+  dependencies: { required: [] }
+  routing:
+    paths: ["/v1/payments", "/v1/payments/*"]
+  egress:
+    allow: ["api.stripe.example:443"]      # ServiceEntry allowlist (GKE)
+  sizing:
+    dev:   { replicas: { min: 1, max: 2 },  cpu: 250m, memory: 512Mi }
+    stage: { replicas: { min: 1, max: 3 },  cpu: 250m, memory: 512Mi }
+    uat:   { replicas: { min: 2, max: 4 },  cpu: 500m, memory: 1Gi }
+    prod:  { replicas: { min: 3, max: 10 }, cpu: "1",  memory: 2Gi }
+  compliance: { pii: true, pci: true }
+  supportsExport: true                     # config export/import for promote-up
