@@ -8,11 +8,12 @@ from diagrams.gcp.security import IAP, KMS, AccessContextManager, Iam, SecurityC
 from diagrams.onprem.client import Users
 from diagrams.onprem.network import Internet
 
-from _style import CONTROL, DATAC, GREY, NONPROD, PLAIN, PROD, SHARED, TRAFFIC, diagram, main
+from _style import CONTROL, DATAC, GREY, NONPROD, PLAIN, PROD, SHARED, TRAFFIC, diagram, legend, main
 
 
 def render(outfile: str, outformat: str) -> None:
     with diagram("Network and security layers", outfile, outformat, nodesep="1.5", ranksep="2.5"):
+        legend(("TRAFFIC", "Request path through the layers"), ("CONTROL", "Governs / feeds detection"))
         inet = Internet("Internet")
         ops = Users("Operators")
 

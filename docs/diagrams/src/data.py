@@ -5,11 +5,12 @@ from diagrams.gcp.compute import Run
 from diagrams.gcp.database import SQL
 from diagrams.gcp.storage import GCS
 
-from _style import CONTROL, DATA, DATAC, DELIVERY, DR, DRC, NONPROD, PROD, SHARED, diagram, main
+from _style import CONTROL, DATA, DATAC, DELIVERY, DR, DRC, NONPROD, PROD, SHARED, diagram, legend, main
 
 
 def render(outfile: str, outformat: str) -> None:
     with diagram("Data architecture", outfile, outformat):
+        legend(("DELIVERY", "Bootstrap job applies grants and schemas"), ("DATA", "Contains / data flow"), ("DR", "Replication or copy to DR"), ("CONTROL", "Same customer, related containers"))
         boot = Run("DB bootstrap job (Cloud Run job)\nREVOKE CONNECT/TEMP FROM PUBLIC\nGRANT CONNECT to env login\nCREATE SCHEMA per product")
 
         with Cluster("data-nonprod · us-east1", graph_attr=NONPROD):

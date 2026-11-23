@@ -8,12 +8,13 @@ from diagrams.gcp.security import KMS, ResourceManager, SecurityCommandCenter
 from diagrams.gcp.storage import GCS
 from diagrams.onprem.gitops import Argocd
 
-from _style import CONTROL, DATAC, DELIVERY, GREY, LINK, NONPROD, PROD, SHARED, TRAFFIC, diagram, main
+from _style import CONTROL, DATAC, DELIVERY, GREY, LINK, NONPROD, PROD, SHARED, TRAFFIC, diagram, legend, main
 
 
 def render(outfile: str, outformat: str) -> None:
     with diagram("Resource hierarchy, projects and VPC-SC perimeters", outfile, outformat, direction="TB",
                  nodesep="1.8", ranksep="2.0"):
+        legend(("TRAFFIC", "Data flow across perimeters"), ("DELIVERY", "Image promotion (cross-perimeter read)"), ("CONTROL", "Shared VPC attachment"), ("LINK", "Contains (organization → folder → project)"))
         org = ResourceManager("Organization 000000000000\norg policies: allowed regions, no external IP,\nno SA keys, OS Login, Shielded VM,\ntrusted images, CMEK required")
 
         with Cluster("Folders", graph_attr=GREY):

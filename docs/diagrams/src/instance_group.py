@@ -14,11 +14,12 @@ from diagrams.onprem.client import Users
 from diagrams.onprem.iac import Ansible
 from diagrams.onprem.vcs import Github
 
-from _style import CONTROL, DATA, DATAC, DELIVERY, DR, DRC, EGRESS, GREY, NONPROD, PROD, TRAFFIC, diagram, main
+from _style import CONTROL, DATA, DATAC, DELIVERY, DR, DRC, EGRESS, GREY, NONPROD, PROD, TRAFFIC, diagram, legend, main
 
 
 def render(outfile: str, outformat: str) -> None:
     with diagram("Instance Group (MIG) deployment architecture", outfile, outformat):
+        legend("TRAFFIC", ("DELIVERY", "Delivery: image build, promotion, rolling update, Ansible"), "DATA", ("DR", "DR backend (failover)"), ("EGRESS", "Outbound via Cloud NAT"), ("CONTROL", "Identity or firewall policy attached"))
         users = Users("Customer users\n(internet)")
 
         with Cluster("Git", graph_attr=GREY):

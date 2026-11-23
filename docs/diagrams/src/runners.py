@@ -7,11 +7,12 @@ from diagrams.onprem.ci import GithubActions
 from diagrams.onprem.iac import Ansible
 from diagrams.onprem.vcs import Github, Git
 
-from _style import CONTROL, DELIVERY, EGRESS, GREY, NONPROD, PROD, TRAFFIC, diagram, main
+from _style import CONTROL, DELIVERY, EGRESS, GREY, NONPROD, PROD, TRAFFIC, diagram, legend, main
 
 
 def render(outfile: str, outformat: str) -> None:
     with diagram("Shared CI and Ansible runners", outfile, outformat, direction="TB", nodesep="2.2"):
+        legend(("TRAFFIC", "Fork PR: offline checks only"), ("DELIVERY", "Pipelines: OIDC → WIF, promotion, deploy"), ("EGRESS", "Outbound to GitHub / Bitbucket via Cloud NAT"))
         with Cluster("Source", graph_attr=GREY):
             gh = Github("GitHub: platform-config\n+ product repos")
             bb = Git("Bitbucket: product repos")

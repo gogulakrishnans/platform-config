@@ -59,6 +59,59 @@ EDGE = {"fontsize": "18", "fontname": FONT, "fontcolor": "#37474f", "penwidth": 
 Node._height = 2.2
 
 
+# What each arrow style means, unless a diagram passes its own wording to legend().
+ARROWS = {
+    "TRAFFIC": (TRAFFIC, "User and service traffic"),
+    "DELIVERY": (DELIVERY, "Delivery: pipelines, GitOps, image promotion"),
+    "DATA": (DATA, "Data access"),
+    "DR": (DR, "DR: replication, failover path"),
+    "EGRESS": (EGRESS, "Outbound (egress) traffic"),
+    "CONTROL": (CONTROL, "Attached policy, identity or key"),
+    "LINK": (LINK, "Runs on / part of"),
+}
+# Line samples drawn with characters, so the whole legend is one compact table node.
+# Characters from the WGL4 set (present in Arial and DejaVu Sans), so they render on Windows and in CI.
+_SAMPLE = {"bold": "<B>————————►</B>", "dashed": "– – – – – – ►", "dotted": "· · · · · · · · · ►", "": "————————►"}
+BOXES = [  # (fill, border, meaning)
+    ("#fdecea", "#c62828", "prod"),
+    ("#e8f0fe", "#1a73e8", "non-prod"),
+    ("#fff3e0", "#ef6c00", "DR"),
+    ("#e6f4ea", "#2e7d32", "data / security"),
+    ("#f3e5f5", "#7b1fa2", "shared / exchange"),
+    ("#f5f5f5", "#616161", "Git / tooling"),
+]
+
+
+def _esc(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def legend(*items, boxes: bool = True) -> None:
+    """Add a legend to the current diagram: one row per arrow style the diagram uses, each drawn in
+    that style's colour and pattern, plus the box colours.
+
+    items: "TRAFFIC" (default wording) or ("TRAFFIC", "what this arrow means in this diagram").
+    """
+    rows = ['<TR><TD COLSPAN="2" ALIGN="LEFT"><B><FONT POINT-SIZE="24">Legend</FONT></B></TD></TR>']
+    for item in items:
+        key, text = (item, ARROWS[item][1]) if isinstance(item, str) else item
+        style = ARROWS[key][0]
+        sample = _SAMPLE[style.get("style", "")]
+        rows.append(
+            f'<TR><TD ALIGN="LEFT"><FONT COLOR="{style["color"]}" POINT-SIZE="22">{sample}</FONT></TD>'
+            f'<TD ALIGN="LEFT"><FONT POINT-SIZE="20">{_esc(text)}</FONT></TD></TR>')
+    if boxes:
+        swatches = "".join(
+            f'<TD BGCOLOR="{fill}" COLOR="{border}" BORDER="2" CELLPADDING="6">'
+            f'<FONT POINT-SIZE="18">{_esc(meaning)}</FONT></TD>' for fill, border, meaning in BOXES)
+        rows.append('<TR><TD ALIGN="LEFT" VALIGN="MIDDLE"><FONT POINT-SIZE="20">Boxes</FONT></TD>'
+                    f'<TD ALIGN="LEFT"><TABLE BORDER="0" CELLSPACING="6"><TR>{swatches}</TR></TABLE></TD></TR>')
+    label = ('<<TABLE BORDER="2" COLOR="#424242" CELLBORDER="0" CELLSPACING="6" CELLPADDING="4" '
+             f'BGCOLOR="#ffffff" STYLE="ROUNDED">{"".join(rows)}</TABLE>>')
+    Node(label, shape="plaintext", fixedsize="false", width="0", height="0", labelloc="c",
+         fontname=FONT, fontcolor=TEXT, margin="0")
+
+
 def diagram(title: str, outfile: str, outformat: str, direction: str = "LR", **graph) -> Diagram:
     return Diagram(title, filename=outfile, outformat=outformat, show=False, direction=direction,
                    graph_attr={**GRAPH, **graph}, node_attr=NODE, edge_attr=EDGE)

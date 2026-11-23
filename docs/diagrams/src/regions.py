@@ -7,11 +7,12 @@ from diagrams.onprem.ci import GithubActions
 from diagrams.onprem.iac import Terraform
 from diagrams.onprem.vcs import Github
 
-from _style import DATA, DELIVERY, DR, DRC, GREY, NONPROD, PLAIN, PROD, TRAFFIC, diagram, main
+from _style import DATA, DELIVERY, DR, DRC, GREY, NONPROD, PLAIN, PROD, TRAFFIC, diagram, legend, main
 
 
 def render(outfile: str, outformat: str) -> None:
     with diagram("Region model and placement", outfile, outformat):
+        legend(("TRAFFIC", "Placement result"), ("DELIVERY", "PR triggers the job"), ("DATA", "Reads inventory / same cell"), ("DR", "DR pair, replica, or failed placement"))
         pr = Github("New customer PR\nregion.primary: us-east1")
 
         with Cluster("Git (read only by placement)", graph_attr=GREY):

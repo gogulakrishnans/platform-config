@@ -22,7 +22,8 @@ same content.
 All diagrams share [_style.py](_style.py): fonts (18 pt labels, 22 pt cluster titles), colours
 (red prod, blue non-prod, orange DR, green data, purple shared/exchange) and edge styles (purple
 dashed = delivery, blue = traffic, green = data access, orange dashed = DR/replication, grey dotted =
-policy and keys). The SVGs embed their icons, so they render anywhere; open them in a browser and zoom.
+policy and keys). Every diagram carries a legend (`legend()` in `_style.py`) listing the arrow styles
+it uses, with their meaning in that diagram, and the box colours. The SVGs embed their icons, so they render anywhere; open them in a browser and zoom.
 
 ## Render
 

@@ -12,11 +12,12 @@ from diagrams.onprem.iac import Terraform
 from diagrams.onprem.gitops import Argocd
 from diagrams.onprem.vcs import Github
 
-from _style import DATA, DATAC, DELIVERY, GREY, NONPROD, PROD, SHARED, diagram, main
+from _style import DATA, DATAC, DELIVERY, GREY, NONPROD, PROD, SHARED, diagram, legend, main
 
 
 def render(outfile: str, outformat: str) -> None:
     with diagram("Multi-product composition (acme-corp prod)", outfile, outformat):
+        legend(("DELIVERY", "Validation and delivery flow"), ("DATA", "Resources created by L3"))
         with Cluster("Catalog (platform-owned)", graph_attr=SHARED):
             p1 = GKE("payment-api\ngke · sql · bucket · publishes events")
             p2 = Run("reporting-engine\ncloud-run · sql · bucket · bq\nsubscribes payment-events\ndepends on payment-api")

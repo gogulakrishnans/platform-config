@@ -15,11 +15,12 @@ from diagrams.onprem.ci import GithubActions
 from diagrams.onprem.client import Users
 from diagrams.onprem.vcs import Github
 
-from _style import CONTROL, DATA, DATAC, DELIVERY, DR, DRC, EGRESS, GREY, NONPROD, PROD, TRAFFIC, diagram, main
+from _style import CONTROL, DATA, DATAC, DELIVERY, DR, DRC, EGRESS, GREY, NONPROD, PROD, TRAFFIC, diagram, legend, main
 
 
 def render(outfile: str, outformat: str) -> None:
     with diagram("Cloud Run deployment architecture", outfile, outformat):
+        legend(("TRAFFIC", "User traffic and Pub/Sub push"), ("DELIVERY", "Delivery: canary deploy, migration job"), "DATA", ("DR", "DR copy, failover, re-pointed push"), ("EGRESS", "Outbound via Direct VPC egress and Cloud NAT"), ("CONTROL", "Identity attached / dead-letter policy"))
         users = Users("Customer users\n(internet)")
         testers = Users("Customer UAT users\n(allowlisted IPs)")
         ops = Users("Operators")

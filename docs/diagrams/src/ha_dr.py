@@ -10,11 +10,12 @@ from diagrams.gcp.storage import GCS
 from diagrams.onprem.client import Users
 from diagrams.onprem.vcs import Github
 
-from _style import CONTROL, DATA, DR, DRC, GREY, PROD, SHARED, TRAFFIC, diagram, main
+from _style import CONTROL, DATA, DR, DRC, GREY, PROD, SHARED, TRAFFIC, diagram, legend, main
 
 
 def render(outfile: str, outformat: str) -> None:
     with diagram("HA and DR (per prod cell)", outfile, outformat, nodesep="1.7"):
+        legend("TRAFFIC", ("DATA", "Data access"), ("DR", "Failover, replication, backup to DR"), ("CONTROL", "Runbook acts on"))
         users = Users("Users")
         glb = LoadBalancing("Global external ALB\nhealth checks per backend")
 

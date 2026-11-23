@@ -7,11 +7,12 @@ from diagrams.onprem.ci import GithubActions
 from diagrams.gcp.operations import Monitoring
 from diagrams.gcp.security import Iam
 
-from _style import DATA, DELIVERY, DR, NONPROD, PROD, SHARED, TRAFFIC, diagram, main
+from _style import DATA, DELIVERY, DR, NONPROD, PROD, SHARED, TRAFFIC, diagram, legend, main
 
 
 def render(outfile: str, outformat: str) -> None:
     with diagram("Data-sharing flows (one customer)", outfile, outformat):
+        legend(("TRAFFIC", "Seed down (prod → non-prod, sanitized)"), ("DELIVERY", "Promote up, shared reference publishing"), ("DATA", "Read only (shared reference)"), ("DR", "Failure path (stop and alert)"))
         with Cluster("Non-prod perimeter", graph_attr=NONPROD):
             dev = SQL("acme-corp dev")
             stage = SQL("acme-corp stage")

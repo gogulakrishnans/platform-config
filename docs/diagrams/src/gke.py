@@ -18,11 +18,12 @@ from diagrams.onprem.gitops import Argocd
 from diagrams.onprem.network import Internet
 from diagrams.onprem.vcs import Github
 
-from _style import CONTROL, DATA, DATAC, DELIVERY, DR, DRC, EGRESS, GREY, LINK, NONPROD, NS, PROD, TRAFFIC, diagram, main
+from _style import CONTROL, DATA, DATAC, DELIVERY, DR, DRC, EGRESS, GREY, LINK, NONPROD, NS, PROD, TRAFFIC, diagram, legend, main
 
 
 def render(outfile: str, outformat: str) -> None:
     with diagram("GKE deployment architecture", outfile, outformat):
+        legend("TRAFFIC", ("DELIVERY", "Delivery: GitOps sync, image promotion by digest"), ("DATA", "Data access (Workload Identity, IAM login)"), ("DR", "DR: replication, DR backend (capacity 0 until drActive)"), ("EGRESS", "Outbound via egress gateway and Cloud NAT"), ("CONTROL", "Attached service, identity, policy or key"), ("LINK", "Runs on (cluster)"))
         users = Users("Customer users\n(internet)")
         testers = Users("Customer UAT users\n(allowlisted IPs)")
         ops = Users("Operators")
