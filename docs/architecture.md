@@ -709,7 +709,7 @@ These resolve inconsistencies or gaps in the brief. None of them changes a locke
 | Brief deliverable 4: Helm charts for GKE | `helm/tenant`, `helm/product-base`, `argocd/` (§14); rendered output in `examples/rendered/` |
 | Brief deliverable 5: public repository | [README](../README.md), [CONTRIBUTING](../CONTRIBUTING.md), [LICENSE](../LICENSE), `.github/workflows/`, [checklist](checklist.md); pushed only on the owner's request |
 | D1 Architecture design + decisions + traceability | This document, [decisions.md](decisions.md), §21 |
-| D2 Three runtime diagrams (Mermaid + SVG) | `docs/diagrams/{gke,cloud-run,instance-group}.{md,svg}` |
+| D2 Three runtime diagrams (Mermaid + SVG) | Pages `docs/diagrams/{gke,cloud-run,instance-group}.md` show the Google Cloud icon diagrams (`*-gcp.svg`/`.png`, source in `docs/diagrams/src/`); the Mermaid source and SVG are kept in `docs/diagrams/backup/` |
 | D3 Terraform L0-L3, two example customers, fmt/validate/test | `scripts/terraform-check.py` (fmt, validate, `terraform test` with mock providers), tflint, `policy/check_terraform.py` |
 | D4 Tenant + product base charts, lint/template/schema | `scripts/gitops-check.py`: helm lint, ApplicationSet expansion, helm template, kubeconform, manifest policy |
 | D5 Public repo, README, CI, no secrets | [`repo-gate.yml`](../.github/workflows/repo-gate.yml) (offline checks, gitleaks), public-repo-safe workflows (§22), [what-is-mocked.md](what-is-mocked.md) |

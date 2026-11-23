@@ -2,10 +2,10 @@
 
 Diagram-as-code sources for every diagram in `docs/diagrams/`, drawn with the
 [`diagrams`](https://diagrams.mingrammer.com/docs/nodes/gcp) library and the official Google Cloud
-product icons. Each Mermaid page (`docs/diagrams/<name>.md`) links to its icon version, which has the
-same content.
+product icons. Each page (`docs/diagrams/<name>.md`) shows its icon diagram; the earlier Mermaid version
+of each is kept in [`../backup/`](../backup/).
 
-| Source | Output | Mirrors |
+| Source | Output | Page |
 |---|---|---|
 | [gke.py](gke.py) | `gke-gcp.svg` / `.png` | [gke.md](../gke.md) (D2) |
 | [cloud_run.py](cloud_run.py) | `cloud-run-gcp.svg` / `.png` | [cloud-run.md](../cloud-run.md) (D2) |
@@ -34,5 +34,6 @@ python -m venv .venv && .venv/bin/pip install -r docs/diagrams/src/requirements.
 .venv/bin/python docs/diagrams/src/render_all.py gke data     # selected ones
 ```
 
-When a diagram's content changes, update both the Mermaid page and its `.py` source in the same PR.
+When a diagram's content changes, update its `.py` source and re-render. The Mermaid backups are no longer
+maintained; re-render them with `python scripts/render-diagrams.py` only if you edit one.
 `scripts/render-diagrams.py --check` (repo gate) fails if any icon diagram's SVG or PNG is missing.

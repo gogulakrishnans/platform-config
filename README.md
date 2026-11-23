@@ -13,7 +13,7 @@ without credentials. See [what is mocked](docs/what-is-mocked.md).
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | The design (D1), with clarifications and the scenario traceability table |
 | [docs/decisions.md](docs/decisions.md) | Key decisions: options, recommendation, rationale |
-| [docs/diagrams/](docs/diagrams/) | GKE, Cloud Run and Instance Group architectures (D2), plus supporting diagrams (Mermaid + SVG) |
+| [docs/diagrams/](docs/diagrams/) | GKE, Cloud Run and Instance Group architectures (D2), plus supporting diagrams, drawn with Google Cloud icons (SVG + PNG, legend on each); Mermaid versions in `docs/diagrams/backup/` |
 | [docs/catalog.md](docs/catalog.md) | Product catalog: requirement matrix, dependency graph, version matrix |
 | [docs/runbooks/](docs/runbooks/) | Onboarding, Day 2, capacity and regions, DR, break-glass |
 | [docs/roadmap.md](docs/roadmap.md) | 12-week plan and product catalog timeline |
