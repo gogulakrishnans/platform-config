@@ -34,6 +34,71 @@ without credentials. See [what is mocked](docs/what-is-mocked.md).
    - Cloud Run: a canary deploy step
    - MIGs: Packer images, then an Ansible-assisted rolling update
 
+## Onboarding a customer
+
+A customer is onboarded with one pull request that sets only `region.primary`. That works only on top of
+a platform that already exists. The steps below are what must be in place first, then the sequence that
+runs for every new customer.
+
+### What must exist before the first customer (one-time, platform team)
+| # | Prerequisite | Created by | Why the customer needs it |
+|---|---|---|---|
+| 0 | GCP organization, billing account, org admin; public DNS domain delegated to Cloud DNS | Manual (assumptions in the brief) | Everything is created under the org; customer hostnames live in the public zone |
+| 1 | IaC seed project, Terraform state bucket, Terraform identities (`tf-l1`, `tf-nonprod`, `tf-prod`), workload identity pool with GitHub and Bitbucket providers | **L0**: `infrastructure/layers/L0-bootstrap/bootstrap.sh` (org admin, once) | Pipelines authenticate without keys and keep state remotely |
+| 2 | GitHub repository settings: branch protection on `main`, CODEOWNERS teams, Environments `tf-<pool>` (with reviewers) and `tf-<pool>-readonly`, `deliver-*`, `promote-*`, `isolation-*`, and variables (`GCP_WIF_PROVIDER`, `TF_STATE_BUCKET`, `TF_SERVICE_ACCOUNT`, `DEPLOYER_SERVICE_ACCOUNT`, ...) | Repository admin (settings, not code) | Merges are reviewed and every apply gets the right identity and approval |
+| 3 | The 12 fixed projects, Shared VPCs, org policies, VPC-SC perimeters, Artifact Registries, Binary Authorization, platform identities (promoter, seed publisher/importer, ArgoCD), management clusters, **3 ArgoCD instances with their root Applications** | **L1**: `infrastructure/layers/L1-foundation` (platform PR; GitHub-hosted for the first apply) | The customer's resources go into these projects and perimeters; ArgoCD delivers its Kubernetes objects |
+| 4 | Self-hosted runner pools per environment group (devstage, uat, prod), registered to GitHub and Bitbucket | **L1** `runner-pools` + runner registration | Applies run inside the VPC-SC perimeters, which GitHub-hosted runners cannot reach |
+| 5 | An **active region pair** in `inventory/regions.yaml` with cells: per group a GKE cluster (prod plus its DR cluster), Cloud SQL instances (prod plus DR replica), platform keys, the database bootstrap job, the seed work bucket; `inventory/clusters/` and `inventory/sql/` written back | **L2 region**: `infrastructure/layers/L2-region/<region>/<group>` (capacity or region PR) | Placement can only pick from cells that exist and have headroom |
+| 6 | Platform add-ons on every cluster: Istio ingress/egress gateways, Argo Rollouts, cert-manager, Falco, canary analysis, label admission policy | ArgoCD root Applications (automatic once the cluster is registered) | Tenant and product releases need the gateways, CRDs and policies |
+| 7 | Load balancers, Cloud Armor policies and DNS zones per group (initial apply, no customers yet) | **L2 edge**: `infrastructure/layers/L2-edge/*` | Customer host rules and certificates are added to these |
+| 8 | Catalog entries for the products the customer selects, their Helm values (GKE) and, for prod pins, **promoted digests** in `products/<p>/releases.yaml` | Platform + product teams (catalog PR); `promote-image.yml` | The validator rejects unknown products, versions outside the window and unpromoted prod pins |
+
+### Execution sequence for a new customer
+```mermaid
+sequenceDiagram
+    autonumber
+    actor CS as Customer Success
+    participant PR as Pull request
+    participant Bot as customer-pr / repo-gate
+    participant Apply as terraform-apply (self-hosted pools)
+    participant GCP as Google Cloud
+    participant Job as db-bootstrap job
+    participant Argo as ArgoCD (3 instances)
+    participant L4 as l4-delivery
+    CS->>PR: customers/<id>/customer.yaml (region only), products.yaml, data-sharing.yaml
+    PR->>Bot: validate-registry, placement, generate-layers, render-gitops, catalog-report
+    Bot->>PR: commit placement + generated files. List the states to apply
+    Bot->>PR: repo gate: Terraform tests, policy, Helm render, kubeconform
+    CS->>PR: review (CODEOWNERS) and merge to main
+    PR->>Apply: changed-path detection: only this customer's states
+    Apply->>GCP: wave 3: L3 keys-nonprod, keys-prod (key rings per group)
+    Apply->>GCP: wave 4: L3 dev, stage, uat, prod (identity, database + IAM login, buckets, datasets, topics, Cloud Run, MIGs, backup plans)
+    Apply->>Job: per environment: revoke PUBLIC, grant CONNECT, create product schemas
+    Apply->>GCP: wave 5: L3 exchange (shared + seed buckets, data-sharing grants)
+    Apply->>GCP: wave 6: L2 edge (certificate, host rules, backends, Cloud Armor, DNS)
+    PR->>Argo: argocd/generated/ changed
+    Argo->>GCP: AppProject, tenant-<id>-<env> (namespace, quota, StorageClass, NetworkPolicies, Istio, KSAs)
+    Argo->>GCP: <id>-<product>-<env>: PreSync migration Job, then Rollout (prod: primary + DR)
+    PR->>L4: version pins changed
+    L4->>GCP: Cloud Run revisions and MIG templates for the customer's versions
+```
+
+| Step | What happens | Where | Typical time |
+|---|---|---|---|
+| 1 | Customer Success opens the PR with the three customer files | `customers/<id>/` | 5 min |
+| 2 | Validation, placement (cluster + SQL instance per group, written back), generated Terraform roots and ArgoCD index committed to the PR | `customer-pr.yml`, `repo-gate.yml` | 3–5 min |
+| 3 | Review and merge | CODEOWNERS | review time |
+| 4 | Customer key rings, then the four environment states in parallel, then the database bootstrap job per environment | `terraform-apply.yml` waves 3–4 | ~12 min |
+| 5 | Exchange resources (shared reference, seed bucket, data-sharing grants) | wave 5 | ~2 min |
+| 6 | Edge: certificate, host rules, backends, DNS | wave 6 | ~5 min (+ certificate issuance) |
+| 7 | Kubernetes: AppProject, tenant namespaces, product releases on the primary and DR clusters | ArgoCD (automatic) | 5–10 min |
+| 8 | Cloud Run and MIG versions deployed | `l4-delivery.yml` | 5–10 min, in parallel with 7 |
+| 9 | Smoke test and isolation sample | `isolation-tests.yml` | ~5 min |
+
+If placement finds no free cell, it exits with a capacity request. A capacity PR adds a cell and L2 builds it
+([runbooks/capacity.md](docs/runbooks/capacity.md)); then placement is re-run. The full procedure, review checklist
+and rollback are in [docs/runbooks/onboarding.md](docs/runbooks/onboarding.md).
+
 ## Repository layout
 ```
 docs/                      design (D1), decisions, diagrams (D2), catalog, runbooks, roadmap, checklist
