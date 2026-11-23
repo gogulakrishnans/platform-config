@@ -12,7 +12,7 @@
   - `inventory/{platform,regions}.yaml` and `inventory/{clusters,sql}/*.yaml`
   - catalog entries `products/{payment-api,reporting-engine,legacy-billing}`
   - the two example customers, with placement written by the job
-- **Terraform:** `infrastructure/` contains 27 modules, the L0 script, L1, and the generated L2-region, L2-edge and L3 roots. See `infrastructure/README.md`.
+- **Terraform:** `infrastructure/` contains 25 modules, the L0 script, L1, and the generated L2-region, L2-edge and L3 roots. See `infrastructure/README.md`.
 - **Placement job:** `scripts/placement/` with its unit tests.
 - **Database bootstrap job:** `db-bootstrap/` (Python Cloud Run job, Dockerfile, unit tests).
 - **Static policy checks:** `policy/check_terraform.py` with its own tests.
