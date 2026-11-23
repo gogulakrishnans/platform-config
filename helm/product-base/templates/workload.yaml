@@ -1,0 +1,168 @@
+{{- $name := include "product.name" . -}}
+{{- $ns := include "product.namespace" . -}}
+{{- $strategy := include "product.strategy" . -}}
+{{- $exposed := and .Values.ingress.enabled .Values.ingress.hosts .Values.ingress.paths -}}
+{{- $hpa := gt (int .Values.replicas.max) (int .Values.replicas.min) -}}
+{{- if gt (int .Values.replicas.min) (int .Values.replicas.max) }}
+{{- fail "replicas.min must not exceed replicas.max" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-config" $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "product.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml .Values.config | nindent 4 }}
+---
+{{- if .Values.persistence.enabled }}
+{{- if and (lt (int .Values.replicas.min) 2) (eq .Values.regionRole "primary") }}
+{{- fail "products with a persistent volume run at least 2 replicas (architecture §8)" }}
+{{- end }}
+# Stateful product (approved persistent volume): partitioned rolling update, one pod at a time.
+# Argo Rollouts canary does not apply (architecture §13).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "product.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ printf "%s-headless" $name }}
+  {{- if not $hpa }}
+  replicas: {{ .Values.replicas.min }}
+  {{- end }}
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0
+      maxUnavailable: 1
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      {{- include "product.selectorLabels" . | nindent 6 }}
+  template:
+    {{- include "product.podTemplate" . | nindent 4 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "product.labels" . | nindent 10 }}
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: {{ .Values.persistence.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+{{- else }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "product.labels" . | nindent 4 }}
+spec:
+  {{- if not $hpa }}
+  replicas: {{ .Values.replicas.min }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  progressDeadlineSeconds: 900
+  selector:
+    matchLabels:
+      {{- include "product.selectorLabels" . | nindent 6 }}
+  template:
+    {{- include "product.podTemplate" . | nindent 4 }}
+  strategy:
+    {{- if eq $strategy "blueGreen" }}
+    blueGreen:
+      activeService: {{ $name }}
+      previewService: {{ printf "%s-preview" $name }}
+      autoPromotionEnabled: {{ .Values.strategy.blueGreen.autoPromotionEnabled }}
+      scaleDownDelaySeconds: 600
+    {{- else if eq $strategy "canary" }}
+    {{- $a := .Values.strategy.canary.analysis }}
+    canary:
+      stableService: {{ $name }}
+      canaryService: {{ printf "%s-canary" $name }}
+      maxSurge: {{ .Values.strategy.rolling.maxSurge | quote }}
+      maxUnavailable: 0
+      trafficRouting:
+        istio:
+          virtualService:
+            name: {{ $name }}
+            routes: {{ ternary (list "gateway" "mesh") (list "mesh") (not (empty $exposed)) | toJson }}
+      analysis:
+        startingStep: 1
+        templates:
+          - templateName: {{ $a.template }}
+            clusterScope: true
+        args:
+          - { name: service, value: {{ $name }} }
+          - { name: namespace, value: {{ $ns }} }
+          - { name: max-error-rate, value: {{ $a.maxErrorRate | quote }} }
+          - { name: max-p95-latency-ms, value: {{ $a.maxP95LatencyMs | quote }} }
+      steps:
+        {{- range .Values.strategy.canary.weights }}
+        - setWeight: {{ . }}
+        - pause: { duration: {{ $.Values.strategy.canary.pause }} }
+        {{- end }}
+    {{- else }}
+    # Plain rolling update (Rollout canary without steps behaves like a Deployment).
+    canary:
+      maxSurge: {{ .Values.strategy.rolling.maxSurge | quote }}
+      maxUnavailable: {{ .Values.strategy.rolling.maxUnavailable | quote }}
+    {{- end }}
+{{- end }}
+{{- if $hpa }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "product.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    {{- if .Values.persistence.enabled }}
+    apiVersion: apps/v1
+    kind: StatefulSet
+    {{- else }}
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    {{- end }}
+    name: {{ $name }}
+  minReplicas: {{ .Values.replicas.min }}
+  maxReplicas: {{ .Values.replicas.max }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilization }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+{{- end }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "product.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      {{- include "product.selectorLabels" . | nindent 6 }}

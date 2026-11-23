@@ -1,0 +1,8 @@
+apiVersion: v2
+name: platform
+description: >-
+  Per-cluster platform configuration: the canary ClusterAnalysisTemplate, the label admission
+  policy, Istio metrics collection and the Managed Prometheus query frontend used by Argo Rollouts.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

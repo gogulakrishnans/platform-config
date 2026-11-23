@@ -7,5 +7,5 @@ variable "enforce_vpc_sc" {
 variable "argocd_chart_version" {
   description = "argo-helm argo-cd chart version (pinned; bumped by PR)."
   type        = string
-  default     = "7.7.11"
+  default     = "10.17.0" # Argo CD v3.6.1
 }

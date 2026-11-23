@@ -1,0 +1,13 @@
+apiVersion: v2
+name: product-base
+description: >-
+  Base chart for every GKE product: Argo Rollout (rolling, canary or blue-green) or StatefulSet,
+  Services, PDB, HPA, PreSync schema-migration Job, Cloud SQL Auth Proxy, Istio routing,
+  authorization and egress allowlist. Values layer base -> product -> environment -> customer,
+  then platform-injected values last (architecture §7, §14).
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.31.0-0"
+maintainers:
+  - name: platform-engineering

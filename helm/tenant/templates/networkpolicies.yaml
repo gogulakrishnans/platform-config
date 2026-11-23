@@ -1,0 +1,109 @@
+{{- $ns := include "tenant.namespace" . -}}
+{{- $n := .Values.network -}}
+# Default deny in both directions, then explicit allows (architecture §11). Dev and stage of the
+# same customer share a cluster and are still isolated: same-namespace only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-gateway-and-monitoring
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $n.ingressGatewayNamespace }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $n.monitoringNamespace }}
+      ports:
+        - { protocol: TCP, port: 15020 }   # Istio merged metrics
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-platform-egress
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    # Cluster DNS (kube-dns and NodeLocal DNSCache)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        {{- range $n.dnsCidrs }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # GKE metadata server (Workload Identity Federation)
+    - to:
+        - ipBlock: { cidr: 169.254.169.254/32 }
+      ports:
+        - { protocol: TCP, port: 80 }
+    - to:
+        - ipBlock: { cidr: 169.254.169.252/32 }
+      ports:
+        - { protocol: TCP, port: 988 }
+    # Google APIs through restricted.googleapis.com (VPC-SC), including the managed mesh control plane
+    - to:
+        {{- range $n.googleApisCidrs }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      ports:
+        - { protocol: TCP, port: 443 }
+    # External destinations only through the Istio egress gateway (ServiceEntry allowlist)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $n.egressGatewayNamespace }}
+    {{- if $n.sqlCidrs }}
+    # Cloud SQL (private IP, Auth Proxy port) in the customer's region and, in prod, the DR pair
+    - to:
+        {{- range $n.sqlCidrs }}
+        - ipBlock: { cidr: {{ . }} }
+        {{- end }}
+      ports:
+        - { protocol: TCP, port: 3307 }
+    {{- end }}

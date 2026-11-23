@@ -1,0 +1,82 @@
+# Istio sidecar metrics into Managed Prometheus, for SLOs and canary analysis.
+apiVersion: monitoring.googleapis.com/v1
+kind: ClusterPodMonitoring
+metadata:
+  name: istio-proxies
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      security.istio.io/tlsMode: istio
+  endpoints:
+    - port: 15020
+      path: /stats/prometheus
+      interval: 30s
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gmp-frontend
+  namespace: platform-system
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+# Prometheus-compatible query endpoint for Argo Rollouts. Authorized through Workload Identity
+# Federation: the KSA principal has roles/monitoring.viewer on the group's compute project.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gmp-frontend
+  namespace: platform-system
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  selector:
+    matchLabels: { app.kubernetes.io/name: gmp-frontend }
+  template:
+    metadata:
+      labels:
+        {{- include "platform.labels" . | nindent 8 }}
+        app.kubernetes.io/name: gmp-frontend
+    spec:
+      serviceAccountName: gmp-frontend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: frontend
+          image: {{ .Values.frontend.image }}
+          args:
+            - --web.listen-address=:9090
+            - {{ printf "--query.project-id=%s" .Values.computeProject }}
+          ports:
+            - { name: web, containerPort: 9090 }
+          readinessProbe:
+            httpGet: { path: /-/ready, port: web }
+          livenessProbe:
+            httpGet: { path: /-/healthy, port: web }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities: { drop: [ALL] }
+            seccompProfile: { type: RuntimeDefault }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gmp-frontend
+  namespace: platform-system
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/name: gmp-frontend }
+  ports:
+    - { name: web, port: 9090, targetPort: web }

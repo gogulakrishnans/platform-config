@@ -1,0 +1,64 @@
+# gitops-root defaults. The root Application (installed by L1) layers:
+#   values.yaml -> values-<group>.yaml -> ../generated/<group>/root.yaml (clusters, customers, hosts)
+
+group: ""                       # devstage | uat | prod (generated)
+computeProject: ""              # the group's compute project ID (generated)
+repoURL: https://github.com/example-org/platform-config.git
+targetRevision: main
+
+clusters: []                    # generated from inventory/clusters (primary + DR)
+customers: []                   # generated: customer -> [cluster, namespace] destinations
+gatewayHosts: []                # generated: hosts the Istio ingress gateway accepts
+egressHosts: []                 # generated: union of the catalog egress allowlists (host:port)
+
+# Instance safety policy (overridden per group).
+policy:
+  # ApplicationSet policy: "sync" lets a generator delete Applications; "create-update" never does.
+  applicationsSync: sync
+  preserveResourcesOnDeletion: false
+  prune: true
+  # Allow windows for product syncs (empty = always). manualSync keeps break-glass possible.
+  productSyncWindows: []
+
+retry:
+  limit: 10
+  backoff: { duration: 30s, factor: 2, maxDuration: 10m }
+
+mesh:
+  jwt:
+    issuer: https://auth.platform.example
+    jwksUri: https://auth.platform.example/.well-known/jwks.json
+
+# Platform add-ons, installed on every cluster of the group (sync-wave order).
+addons:
+  - name: cert-manager
+    namespace: cert-manager
+    wave: -30
+    chart: { repoURL: https://charts.jetstack.io, name: cert-manager, version: v1.21.2 }
+    values:
+      crds: { enabled: true }
+      replicaCount: 2
+      podDisruptionBudget: { enabled: true }
+  - name: argo-rollouts
+    namespace: argo-rollouts
+    wave: -30
+    chart: { repoURL: https://argoproj.github.io/argo-helm, name: argo-rollouts, version: 2.43.9 }
+    values:
+      controller: { replicas: 2 }
+      dashboard: { enabled: false }
+  - name: falco
+    namespace: falco
+    wave: -20
+    chart: { repoURL: https://falcosecurity.github.io/charts, name: falco, version: 9.2.0 }
+    values:
+      driver: { kind: modern_ebpf }
+      falcosidekick: { enabled: false }
+      tty: true
+  - name: mesh
+    namespace: istio-system
+    wave: -20
+    path: argocd/addons/mesh          # ingress/egress gateways, mesh-wide mTLS, JWT at the edge
+  - name: platform
+    namespace: platform-system
+    wave: -10
+    path: argocd/addons/platform      # canary analysis template, label policy, metrics

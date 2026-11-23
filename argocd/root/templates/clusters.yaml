@@ -1,0 +1,32 @@
+{{- /*
+Credential-free cluster registrations (decisions #22). ArgoCD reaches each cluster's DNS-based
+control-plane endpoint and authenticates with its own Workload Identity through argocd-k8s-auth;
+IAM on the group's compute project authorizes it. Nothing secret is stored here.
+*/ -}}
+{{- range .Values.clusters }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ printf "cluster-%s" .name }}
+  namespace: {{ include "root.ns" $ }}
+  labels:
+    {{- include "root.labels" $ | nindent 4 }}
+    argocd.argoproj.io/secret-type: cluster
+    platform.example/env-group: {{ $.Values.group }}
+    platform.example/region: {{ .region }}
+    platform.example/region-role: {{ .regionRole }}
+type: Opaque
+stringData:
+  name: {{ .name }}
+  server: {{ .server }}
+  config: |
+    {
+      "execProviderConfig": {
+        "command": "argocd-k8s-auth",
+        "args": ["gcp"],
+        "apiVersion": "client.authentication.k8s.io/v1beta1"
+      },
+      "tlsClientConfig": { "insecure": false }
+    }
+{{- end }}

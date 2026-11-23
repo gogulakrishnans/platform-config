@@ -1,0 +1,206 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "product-base chart values",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["customer", "environment", "envGroup", "regionRole", "product", "image", "port", "replicas", "resources"],
+  "definitions": {
+    "cpu": { "type": "string", "pattern": "^([0-9]+m|[0-9]+(\\.[0-9]+)?)$" },
+    "memory": { "type": "string", "pattern": "^[0-9]+(Mi|Gi)$" },
+    "duration": { "type": "string", "pattern": "^[0-9]+(ms|s|m|h)$" },
+    "stringMap": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } }
+  },
+  "properties": {
+    "argocd": { "type": "object" },
+    "customer": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,18}[a-z0-9]$" },
+    "environment": { "enum": ["dev", "stage", "uat", "prod"] },
+    "envGroup": { "enum": ["devstage", "uat", "prod"] },
+    "regionRole": { "enum": ["primary", "dr"] },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "shortCode"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,40}$" },
+        "shortCode": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,11}$" }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry", "name", "tag"],
+      "properties": {
+        "registry": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._/-]*$" },
+        "tag": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$" },
+        "digest": { "type": "string", "pattern": "^(sha256:[a-f0-9]{64})?$" },
+        "pullPolicy": { "enum": ["IfNotPresent", "Always"] }
+      }
+    },
+    "port": { "type": "integer", "minimum": 1024, "maximum": 65535 },
+    "replicas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": { "min": { "type": "integer", "minimum": 1 }, "max": { "type": "integer", "minimum": 1 } }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu", "memory"],
+      "properties": { "cpu": { "$ref": "#/definitions/cpu" }, "memory": { "$ref": "#/definitions/memory" } }
+    },
+    "strategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["rolling", "canary", "blueGreen"] },
+        "rolling": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "maxSurge": { "type": ["string", "integer"] }, "maxUnavailable": { "type": ["string", "integer"] } }
+        },
+        "canary": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "weights": { "type": "array", "items": { "type": "integer", "minimum": 1, "maximum": 99 }, "minItems": 1 },
+            "pause": { "$ref": "#/definitions/duration" },
+            "analysis": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "template": { "type": "string" },
+                "maxErrorRate": { "type": "string" },
+                "maxP95LatencyMs": { "type": "string" }
+              }
+            }
+          }
+        },
+        "blueGreen": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "autoPromotionEnabled": { "type": "boolean" } }
+        }
+      }
+    },
+    "autoscaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "targetCPUUtilization": { "type": "integer", "minimum": 10, "maximum": 95 } }
+    },
+    "probes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "readinessPath": { "type": "string", "pattern": "^/" },
+        "livenessPath": { "type": "string", "pattern": "^/" },
+        "startupFailureThreshold": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "preStopSleepSeconds": { "type": "integer", "minimum": 0, "maximum": 120 },
+    "terminationGracePeriodSeconds": { "type": "integer", "minimum": 1 },
+    "securityContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runAsUser": { "type": "integer", "minimum": 1 },
+        "runAsGroup": { "type": "integer", "minimum": 1 },
+        "fsGroup": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "command": { "type": "array", "items": { "type": "string" } },
+    "args": { "type": "array", "items": { "type": "string" } },
+    "env": { "$ref": "#/definitions/stringMap" },
+    "platformEnv": { "$ref": "#/definitions/stringMap" },
+    "config": { "type": "object" },
+    "configMountPath": { "type": "string", "pattern": "^/" },
+    "podAnnotations": { "$ref": "#/definitions/stringMap" },
+    "podLabels": { "$ref": "#/definitions/stringMap" },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "name": { "type": "string", "pattern": "^([a-z][a-z0-9_]{0,62})?$" },
+        "schema": { "type": "string", "pattern": "^([a-z][a-z0-9_]{0,62})?$" },
+        "user": { "type": "string" },
+        "impersonate": { "type": "string" },
+        "endpoint": { "type": "string" },
+        "port": { "type": "integer" },
+        "proxy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "image": { "type": "string", "pattern": "^[^:@]+(:[0-9]+\\.[0-9]+\\.[0-9]+|@sha256:[a-f0-9]{64})$" },
+            "resources": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": { "cpu": { "$ref": "#/definitions/cpu" }, "memory": { "$ref": "#/definitions/memory" } }
+            }
+          }
+        }
+      },
+      "if": { "properties": { "enabled": { "const": true } } },
+      "then": { "required": ["name", "schema", "user", "impersonate", "endpoint"], "properties": { "name": { "minLength": 1 }, "endpoint": { "minLength": 1 } } }
+    },
+    "persistence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "size": { "$ref": "#/definitions/memory" },
+        "storageClass": { "type": "string" },
+        "mountPath": { "type": "string", "pattern": "^/" }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "command": { "type": "array", "items": { "type": "string" } },
+        "backoffLimit": { "type": "integer", "minimum": 0 },
+        "activeDeadlineSeconds": { "type": "integer", "minimum": 60 }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "gateway": { "type": "string" },
+        "hosts": { "type": "array", "items": { "type": "string" } },
+        "paths": { "type": "array", "items": { "type": "string", "pattern": "^/" } },
+        "customerClaim": { "type": "string" },
+        "timeout": { "$ref": "#/definitions/duration" },
+        "retries": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "attempts": { "type": "integer", "minimum": 0 },
+            "perTryTimeout": { "$ref": "#/definitions/duration" },
+            "retryOn": { "type": "string" }
+          }
+        }
+      }
+    },
+    "egress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9.-]+:[0-9]+$" } },
+        "gateway": { "type": "string" },
+        "gatewayNamespace": { "type": "string" }
+      }
+    },
+    "trafficPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxConnections": { "type": "integer", "minimum": 1 },
+        "consecutive5xxErrors": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

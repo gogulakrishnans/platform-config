@@ -1,0 +1,12 @@
+apiVersion: v2
+name: tenant
+description: >-
+  One customer environment on a GKE cluster: namespace, quota, LimitRange, per-customer
+  StorageClass, default-deny NetworkPolicies, Istio isolation and the Kubernetes service
+  accounts used for Workload Identity Federation. Owned by the platform team (decisions #15).
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.31.0-0"
+maintainers:
+  - name: platform-engineering

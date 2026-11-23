@@ -11,7 +11,11 @@ configs:
   params:
     controller.sharding.algorithm: consistent-hashing
     server.insecure: "false"
+    # Per-ApplicationSet policies (create-update in prod) and an instance-wide ceiling.
+    applicationsetcontroller.enable.policy.override: "true"
+    applicationsetcontroller.policy: ${appset_policy}
   cm:
+    installationID: argocd-${group}       # two instances share the non-prod management cluster
     timeout.reconciliation: "0s"          # webhooks instead of polling
     application.resourceTrackingMethod: annotation
     exec.enabled: "false"
@@ -47,3 +51,37 @@ redis-ha:
 
 redis:
   enabled: false
+
+# The root Application (app-of-apps). Installing it with ArgoCD is part of installing ArgoCD
+# (C17); everything else comes from Git: argocd/root with this group's values.
+extraObjects:
+  - apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: root
+      namespace: argocd-${group}
+      labels:
+        customer: shared
+        environment: shared
+        env-group: ${group}
+        product: platform
+        region-role: primary
+        managed-by: argocd
+    spec:
+      project: default
+      source:
+        repoURL: ${repo_url}
+        targetRevision: main
+        path: argocd/root
+        helm:
+          releaseName: root
+          valueFiles:
+            - values-${group}.yaml
+            - ../generated/${group}/root.yaml
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: argocd-${group}
+      syncPolicy:
+        automated:
+          prune: ${root_prune}
+          selfHeal: true

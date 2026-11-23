@@ -1,0 +1,6 @@
+# acme-corp / payment-api: layer 4 (customer, prod). Optional; owned by Customer Success with
+# product-team review. Version pins and replica overrides belong in ../../products.yaml.
+env:
+  SETTLEMENT_REPORT_FORMAT: camt.053
+podAnnotations:
+  platform.example/change-ticket: CHG-0001

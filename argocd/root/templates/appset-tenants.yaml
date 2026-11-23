@@ -1,0 +1,51 @@
+# Tenant ApplicationSet: one Application per customer per environment per target cluster (prod:
+# primary and DR), deploying helm/tenant. Parameters and values come from the GitOps index written
+# by scripts/render-gitops.py from customer.yaml + placement + catalog + inventory (C18).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: tenants
+  namespace: {{ include "root.ns" . }}
+  labels:
+    {{- include "root.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    {{- include "root.appsetSyncPolicy" . | nindent 4 }}
+  generators:
+    - git:
+        repoURL: {{ .Values.repoURL }}
+        revision: {{ .Values.targetRevision }}
+        files:
+          - path: {{ printf "argocd/generated/%s/tenants/*.yaml" .Values.group }}
+  template:
+    metadata:
+      name: {{`'{{ .argocd.name }}'`}}
+      labels:
+        customer: {{`'{{ .argocd.customer }}'`}}
+        environment: {{`'{{ .argocd.environment }}'`}}
+        env-group: {{`'{{ .argocd.group }}'`}}
+        product: platform
+        region-role: {{`'{{ .argocd.regionRole }}'`}}
+        managed-by: argocd
+      annotations:
+        # Refresh only when the chart or this Application's index file changes.
+        argocd.argoproj.io/manifest-generate-paths: {{`'.;/{{ .path.path }}/{{ .path.filename }}'`}}
+    spec:
+      project: platform-tenants
+      source:
+        repoURL: {{ .Values.repoURL }}
+        targetRevision: {{ .Values.targetRevision }}
+        path: helm/tenant
+        helm:
+          releaseName: tenant
+          valueFiles:
+            - {{`'../../{{ .path.path }}/{{ .path.filename }}'`}}
+      destination:
+        name: {{`'{{ .argocd.cluster }}'`}}
+        namespace: {{`'{{ .argocd.namespace }}'`}}
+      syncPolicy:
+        {{- include "root.appSyncPolicy" (dict "Values" .Values "extra" list) | nindent 8 }}

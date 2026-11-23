@@ -1,0 +1,56 @@
+{{- if and .Values.migration.enabled .Values.database.enabled (eq .Values.regionRole "primary") }}
+# Schema migration before the new version takes traffic (architecture §13): ArgoCD PreSync hook.
+# Migrations follow expand/contract, so the old and the new version both work during the rollout.
+# Not run on the DR cluster, whose database is a read-only replica until promotion.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-migrate" (include "product.name" .) }}
+  namespace: {{ include "product.namespace" . }}
+  labels:
+    {{- include "product.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "product.labels" . | nindent 8 }}
+      annotations:
+        # The Job talks only to Cloud SQL through the proxy; no mesh sidecar, so it can complete.
+        sidecar.istio.io/inject: "false"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "product.name" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "product.podSecurity" . | nindent 8 }}
+      initContainers:
+        {{- include "product.sqlProxy" . | trim | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "product.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: {{ toJson .Values.migration.command }}
+          env:
+            - { name: CUSTOMER_ID, value: {{ .Values.customer | quote }} }
+            - { name: ENVIRONMENT, value: {{ .Values.environment | quote }} }
+            {{- include "product.dbEnv" . | trim | nindent 12 }}
+          resources:
+            requests:
+              cpu: {{ .Values.resources.cpu | quote }}
+              memory: {{ .Values.resources.memory }}
+            limits:
+              memory: {{ .Values.resources.memory }}
+          securityContext:
+            {{- include "product.containerSecurity" . | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 256Mi }
+{{- end }}

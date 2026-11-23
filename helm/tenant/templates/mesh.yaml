@@ -1,0 +1,62 @@
+{{- $ns := include "tenant.namespace" . -}}
+# Istio isolation for the namespace (architecture §12). Product charts add per-workload
+# AuthorizationPolicies for ingress traffic; anything not explicitly allowed is denied.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+spec:
+  mtls:
+    mode: STRICT
+---
+# Limits what the sidecars see and can reach: own namespace, the egress gateway and the mesh
+# control plane. Unknown hosts are rejected (REGISTRY_ONLY), so egress needs a ServiceEntry.
+apiVersion: networking.istio.io/v1
+kind: Sidecar
+metadata:
+  name: default
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+spec:
+  egress:
+    - hosts:
+        - "./*"
+        - "{{ .Values.network.egressGatewayNamespace }}/*"
+        - "istio-system/*"
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY
+---
+# JWT validation at the sidecar too, so product AuthorizationPolicies can match the customer
+# claim (the ingress gateway validates first, architecture §11).
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: jwt
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+spec:
+  jwtRules:
+    - issuer: {{ .Values.mesh.jwt.issuer | quote }}
+      jwksUri: {{ .Values.mesh.jwt.jwksUri | quote }}
+      forwardOriginalToken: true
+---
+# Workloads in this namespace may call each other. Other namespaces (including the same
+# customer's other environment on the shared Dev/Stage cluster) are denied.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+spec:
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: [{{ $ns | quote }}]

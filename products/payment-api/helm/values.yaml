@@ -1,0 +1,19 @@
+# payment-api: layer 2 (product). Owned by team-payments. Sizing, version, identity, hosts and
+# egress come from the catalog and the customer files (layer 5), not from here.
+image:
+  name: payment-api
+
+command: ["/app/payment-api"]
+args: ["serve"]
+
+env:
+  LOG_FORMAT: json
+
+migration:
+  command: ["/app/payment-api", "migrate", "up"]
+
+strategy:
+  canary:
+    analysis:
+      maxErrorRate: "0.005"       # payments: tighter than the platform default
+      maxP95LatencyMs: "300"

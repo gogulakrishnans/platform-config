@@ -1,0 +1,118 @@
+# product-base: layer 1 of 5 (base). Owned by the platform team.
+#
+# Layers, last wins (ArgoCD valueFiles, see argocd/root/templates/appset-products.yaml):
+#   1. helm/product-base/values.yaml                                     base (this file)
+#   2. products/<product>/helm/values.yaml                               product team
+#   3. products/<product>/helm/values-<env>.yaml                         product team, per environment
+#   4. customers/<customer>/helm/<product>/values[-<env>].yaml           optional customer overrides
+#   5. argocd/generated/<group>/products/<customer>-<product>-<env>.yaml platform-injected (render-gitops):
+#      identity, image registry + version pin, sizing, data names, hosts, paths, egress
+#
+# Keys marked (injected) are always set by layer 5 and cannot be overridden by layers 2-4.
+
+argocd: {}                      # ApplicationSet parameters, ignored by the chart
+
+# --- identity (injected) ------------------------------------------------------------------------
+customer: ""
+environment: ""
+envGroup: ""
+regionRole: primary             # dr: minimum replicas, no migrations, plain rolling updates
+product:
+  name: ""
+  shortCode: ""                 # KSA name, Service name, label value
+
+# --- image ---------------------------------------------------------------------------------------
+image:
+  registry: ""                  # (injected) non-prod build registry or prod promoted registry
+  name: ""                      # product layer, e.g. payment-api
+  tag: ""                       # (injected) version pin from customers/<c>/products.yaml
+  digest: ""                    # set by promotion in prod (Binary Authorization)
+  pullPolicy: IfNotPresent
+
+# --- workload ------------------------------------------------------------------------------------
+port: 8080                      # (injected) from the catalog
+replicas: { min: 1, max: 1 }    # (injected) catalog sizing + customer overrides
+resources: { cpu: 250m, memory: 512Mi }   # (injected) requests; memory limit = request
+
+strategy:
+  type: rolling                 # rolling | canary | blueGreen (StatefulSets always roll by partition)
+  rolling: { maxSurge: 25%, maxUnavailable: 25% }
+  canary:
+    weights: [10, 25, 50]       # then 100
+    pause: 5m
+    analysis:
+      template: istio-golden-signals     # ClusterAnalysisTemplate (argocd/addons/platform-config)
+      maxErrorRate: "0.01"
+      maxP95LatencyMs: "500"
+  blueGreen:
+    autoPromotionEnabled: false
+
+autoscaling:
+  targetCPUUtilization: 70
+
+probes:
+  readinessPath: /healthz/ready
+  livenessPath: /healthz/live
+  startupFailureThreshold: 30
+
+preStopSleepSeconds: 15
+terminationGracePeriodSeconds: 45
+
+securityContext:
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+
+command: []
+args: []
+env: {}                         # product layer: plain environment variables
+platformEnv: {}                 # (injected) bucket, dataset, topics, data project
+config: {}                      # (injected) customer product config from products.yaml, mounted as a file
+configMountPath: /etc/product
+
+podAnnotations: {}
+podLabels: {}
+
+# --- data ----------------------------------------------------------------------------------------
+database:
+  enabled: false                # (injected) the catalog requires Cloud SQL
+  name: ""                      # (injected) {customer}_{env}
+  schema: ""                    # (injected) product short code
+  user: ""                      # (injected) IAM login {customer}-{env}@{project}.iam
+  impersonate: ""               # (injected) env GSA
+  endpoint: ""                  # (injected) Cloud SQL write endpoint (DNS, follows failover)
+  port: 5432
+  proxy:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.27.0
+    resources: { cpu: 50m, memory: 64Mi }
+
+persistence:
+  enabled: false                # (injected) catalog persistentVolume.required (approved products only)
+  size: 10Gi
+  storageClass: ""              # (injected) sc-{customer}-{env}
+  mountPath: /data
+
+migration:
+  enabled: true                 # (injected) false on the DR cluster (read-only replica)
+  command: ["/app/migrate", "up"]
+  backoffLimit: 2
+  activeDeadlineSeconds: 900
+
+# --- traffic -------------------------------------------------------------------------------------
+ingress:
+  enabled: true
+  gateway: istio-ingress/ingress-gateway
+  hosts: []                     # (injected)
+  paths: []                     # (injected) path prefixes from the catalog routing
+  customerClaim: customer_id    # JWT claim that must equal the customer ID
+  timeout: 30s
+  retries: { attempts: 2, perTryTimeout: 10s, retryOn: "connect-failure,refused-stream,unavailable" }
+
+egress:
+  allow: []                     # (injected) "host:port" allowlist from the catalog
+  gateway: istio-egress/egress-gateway
+  gatewayNamespace: istio-egress
+
+trafficPolicy:
+  maxConnections: 1024
+  consecutive5xxErrors: 5

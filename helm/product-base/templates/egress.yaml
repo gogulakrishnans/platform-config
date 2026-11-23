@@ -1,0 +1,48 @@
+{{- /*
+Egress allowlist from the catalog (architecture §12). The namespace's Sidecar is REGISTRY_ONLY and
+its NetworkPolicies allow external traffic only to the egress gateway, so a host is reachable only
+when it is listed here. This chart owns the in-mesh leg (sidecar -> egress gateway); the platform
+mesh add-on owns the gateway leg (egress gateway -> host, Cloud NAT static IPs) for the same hosts.
+*/ -}}
+{{- $ns := include "product.namespace" . -}}
+{{- $gwNs := .Values.egress.gatewayNamespace -}}
+{{- range .Values.egress.allow }}
+{{- $parts := splitList ":" . }}
+{{- $h := first $parts }}
+{{- $port := last $parts | int }}
+{{- $id := printf "%s-%s" (include "product.name" $) ($h | replace "." "-") | trunc 63 | trimSuffix "-" }}
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: {{ $id }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "product.labels" $ | nindent 4 }}
+spec:
+  hosts: [{{ $h | quote }}]
+  exportTo: ["."]
+  location: MESH_EXTERNAL
+  resolution: DNS
+  ports:
+    - { number: {{ $port }}, name: {{ printf "tls-%d" $port }}, protocol: TLS }
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: {{ printf "%s-egress" $id | trunc 63 | trimSuffix "-" }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "product.labels" $ | nindent 4 }}
+spec:
+  hosts: [{{ $h | quote }}]
+  gateways: [mesh]
+  exportTo: ["."]
+  tls:
+    - match:
+        - { gateways: [mesh], port: {{ $port }}, sniHosts: [{{ $h | quote }}] }
+      route:
+        - destination:
+            host: {{ printf "egress-gateway.%s.svc.cluster.local" $gwNs }}
+            port: { number: 443 }
+{{- end }}

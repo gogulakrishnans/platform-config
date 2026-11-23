@@ -1,0 +1,103 @@
+{{- $name := include "product.name" . -}}
+{{- $ns := include "product.namespace" . -}}
+{{- $host := include "product.host" . -}}
+{{- $strategy := include "product.strategy" . -}}
+{{- $gwNs := first (splitList "/" .Values.ingress.gateway) -}}
+{{- $exposed := and .Values.ingress.enabled .Values.ingress.hosts .Values.ingress.paths -}}
+# Routing. The "gateway" route serves the product's paths on the customer's hosts (the LB URL map
+# sends the customer host to the cell's Istio ingress gateway); the "mesh" route serves in-namespace
+# callers. With a canary, Argo Rollouts manages the weights of both routes.
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "product.labels" . | nindent 4 }}
+spec:
+  hosts:
+    - {{ $host }}
+    {{- if $exposed }}
+    {{- range .Values.ingress.hosts }}
+    - {{ . }}
+    {{- end }}
+    {{- end }}
+  gateways:
+    - mesh
+    {{- if $exposed }}
+    - {{ .Values.ingress.gateway }}
+    {{- end }}
+  exportTo: [".", {{ $gwNs | quote }}]
+  http:
+    {{- if $exposed }}
+    - name: gateway
+      match:
+        {{- range .Values.ingress.paths }}
+        - { gateways: [{{ $.Values.ingress.gateway }}], uri: { exact: {{ . | quote }} } }
+        - { gateways: [{{ $.Values.ingress.gateway }}], uri: { prefix: {{ printf "%s/" . | quote }} } }
+        {{- end }}
+      route:
+        {{- include "product.routeDestinations" (dict "root" . "strategy" $strategy) | nindent 8 }}
+      timeout: {{ .Values.ingress.timeout }}
+      retries:
+        {{- toYaml .Values.ingress.retries | nindent 8 }}
+    {{- end }}
+    - name: mesh
+      match:
+        - { gateways: [mesh] }
+      route:
+        {{- include "product.routeDestinations" (dict "root" . "strategy" $strategy) | nindent 8 }}
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "product.labels" . | nindent 4 }}
+spec:
+  host: {{ $host }}
+  exportTo: [".", {{ $gwNs | quote }}]
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      http:
+        http2MaxRequests: {{ .Values.trafficPolicy.maxConnections }}
+    outlierDetection:
+      consecutive5xxErrors: {{ .Values.trafficPolicy.consecutive5xxErrors }}
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+{{- if $exposed }}
+---
+# Ingress traffic is accepted only from the ingress gateway, only on the product's paths, and only
+# with a JWT whose customer claim matches this customer (architecture §11). Same-namespace traffic
+# is allowed by the tenant chart; everything else is denied.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ printf "%s-ingress" $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "product.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces: [{{ $gwNs | quote }}]
+      to:
+        - operation:
+            paths:
+              {{- range .Values.ingress.paths }}
+              - {{ . | quote }}
+              - {{ printf "%s/*" . | quote }}
+              {{- end }}
+      when:
+        - key: {{ printf "request.auth.claims[%s]" .Values.ingress.customerClaim | quote }}
+          values: [{{ .Values.customer | quote }}]
+{{- end }}

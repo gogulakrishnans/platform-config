@@ -1,0 +1,8 @@
+# payment-api: layer 3 (environment: prod). Progressive delivery with automatic rollback.
+env:
+  LOG_LEVEL: warn
+strategy:
+  type: canary
+  canary:
+    weights: [10, 25, 50]
+    pause: 5m

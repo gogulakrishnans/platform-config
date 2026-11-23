@@ -1,0 +1,110 @@
+{{- $ns := .Values.ingress.namespace -}}
+{{- $neg := printf "neg-istio-%s" .Values.cluster -}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" . | nindent 4 }}
+    pod-security.kubernetes.io/enforce: restricted
+---
+{{ include "mesh.gateway" (dict "root" . "name" "ingress-gateway" "cfg" .Values.ingress) }}
+---
+# Zonal NEGs named neg-istio-<cluster>; the L2-edge load balancer references them by name
+# (C14). DR clusters produce neg-istio-<primary>-dr, held at capacity 0 until drActive.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-gateway
+  namespace: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" . | nindent 4 }}
+  annotations:
+    cloud.google.com/neg: {{ dict "exposed_ports" (dict "443" (dict "name" $neg)) | toJson | quote }}
+spec:
+  type: ClusterIP
+  selector: { istio: ingress-gateway }
+  ports:
+    - { name: https, port: 443, targetPort: 8443, appProtocol: https }
+    - { name: status-port, port: 15021, targetPort: 15021 }
+---
+# TLS from the load balancer to the gateway. The external ALB does not validate backend
+# certificates, so a self-signed issuer is sufficient; the certificate rotates automatically.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: self-signed
+  namespace: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ingress-gateway-tls
+  namespace: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" . | nindent 4 }}
+spec:
+  secretName: ingress-gateway-tls
+  duration: 2160h
+  renewBefore: 720h
+  privateKey: { algorithm: ECDSA, size: 256, rotationPolicy: Always }
+  dnsNames:
+    {{- range .Values.gatewayHosts }}
+    - {{ . | quote }}
+    {{- end }}
+  issuerRef: { name: self-signed, kind: Issuer }
+---
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: ingress-gateway
+  namespace: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" . | nindent 4 }}
+spec:
+  selector: { istio: ingress-gateway }
+  servers:
+    - port: { number: 443, name: https, protocol: HTTPS }
+      tls: { mode: SIMPLE, credentialName: ingress-gateway-tls, minProtocolVersion: TLSV1_2 }
+      hosts:
+        {{- range .Values.gatewayHosts }}
+        - {{ printf "*/%s" . | quote }}
+        {{- end }}
+---
+# JWT validation at the edge. Product AuthorizationPolicies then match the customer claim.
+apiVersion: security.istio.io/v1
+kind: RequestAuthentication
+metadata:
+  name: jwt
+  namespace: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: { istio: ingress-gateway }
+  jwtRules:
+    - issuer: {{ .Values.jwt.issuer | quote }}
+      jwksUri: {{ .Values.jwt.jwksUri | quote }}
+      forwardOriginalToken: true
+---
+# API paths (/v1/, /v2/, ...) require a valid token.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: require-jwt
+  namespace: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: { istio: ingress-gateway }
+  action: DENY
+  rules:
+    - from:
+        - source: { notRequestPrincipals: ["*"] }
+      to:
+        - operation: { paths: ["/v*"] }

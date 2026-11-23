@@ -1,0 +1,44 @@
+{{- $ns := include "tenant.namespace" . -}}
+# Fair sharing and capacity protection, not billing (architecture §6). Sized by render-gitops
+# from the catalog: max replicas x 1.25 surge x (container + Istio sidecar + Cloud SQL proxy),
+# plus room for migration Jobs.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+spec:
+  hard:
+    requests.cpu: {{ .Values.quota.requestsCpu | quote }}
+    requests.memory: {{ .Values.quota.requestsMemory | quote }}
+    limits.memory: {{ .Values.quota.limitsMemory | quote }}
+    pods: {{ .Values.quota.pods | quote }}
+    persistentvolumeclaims: {{ .Values.quota.persistentVolumeClaims | quote }}
+    requests.storage: {{ .Values.quota.requestsStorage | quote }}
+    # Only the customer's own StorageClass can be used.
+    {{ printf "sc-%s.storageclass.storage.k8s.io/persistentvolumeclaims" $ns }}: {{ .Values.quota.persistentVolumeClaims | quote }}
+    # GKE's built-in classes are closed to tenants.
+    standard.storageclass.storage.k8s.io/persistentvolumeclaims: "0"
+    standard-rwo.storageclass.storage.k8s.io/persistentvolumeclaims: "0"
+    premium-rwo.storageclass.storage.k8s.io/persistentvolumeclaims: "0"
+    services.loadbalancers: "0"
+    services.nodeports: "0"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: tenant
+  namespace: {{ $ns }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        {{- toYaml .Values.limitRange.defaultRequest | nindent 8 }}
+      default:
+        {{- toYaml .Values.limitRange.defaultLimit | nindent 8 }}
+      max:
+        {{- toYaml .Values.limitRange.max | nindent 8 }}

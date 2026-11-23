@@ -1,0 +1,98 @@
+{{- $ns := include "root.ns" . -}}
+{{- $clusters := .Values.clusters -}}
+# Platform add-ons: any namespace on the group's clusters, cluster-scoped resources allowed.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform-addons
+  namespace: {{ $ns }}
+  labels:
+    {{- include "root.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-50"
+spec:
+  description: Platform add-ons (platform team)
+  sourceRepos:
+    - {{ .Values.repoURL }}
+    {{- range .Values.addons }}
+    {{- with .chart }}
+    - {{ .repoURL }}
+    {{- end }}
+    {{- end }}
+  destinations:
+    {{- range $clusters }}
+    - { name: {{ .name }}, namespace: "*" }
+    {{- end }}
+  clusterResourceWhitelist:
+    - { group: "*", kind: "*" }
+---
+# Tenant chart (platform-owned): one namespace per customer environment, plus its StorageClass.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform-tenants
+  namespace: {{ $ns }}
+  labels:
+    {{- include "root.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-50"
+spec:
+  description: Tenant namespaces and their guardrails (platform team)
+  sourceRepos: [{{ .Values.repoURL }}]
+  destinations:
+    {{- range $c := .Values.customers }}
+    {{- range $c.destinations }}
+    - { name: {{ .cluster }}, namespace: {{ .namespace }} }
+    {{- end }}
+    {{- end }}
+  clusterResourceWhitelist:
+    - { group: "", kind: Namespace }
+    - { group: storage.k8s.io, kind: StorageClass }
+  namespaceResourceWhitelist:
+    - { group: "", kind: ResourceQuota }
+    - { group: "", kind: LimitRange }
+    - { group: "", kind: ServiceAccount }
+    - { group: networking.k8s.io, kind: NetworkPolicy }
+    - { group: security.istio.io, kind: PeerAuthentication }
+    - { group: security.istio.io, kind: RequestAuthentication }
+    - { group: security.istio.io, kind: AuthorizationPolicy }
+    - { group: networking.istio.io, kind: Sidecar }
+{{- range .Values.customers }}
+---
+# Customer {{ .name }}: product Applications only, only in the customer's own namespaces, only
+# namespaced workload and routing objects. Guardrails (quota, NetworkPolicy, Sidecar, KSAs) are
+# owned by platform-tenants and cannot be changed from here.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ .name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "root.labels" $ | replace "customer: shared" (printf "customer: %s" .name) | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-50"
+spec:
+  description: {{ printf "Products of customer %s" .name | quote }}
+  sourceRepos: [{{ $.Values.repoURL }}]
+  destinations:
+    {{- range .destinations }}
+    - { name: {{ .cluster }}, namespace: {{ .namespace }} }
+    {{- end }}
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - { group: "", kind: ConfigMap }
+    - { group: "", kind: Service }
+    - { group: apps, kind: StatefulSet }
+    - { group: argoproj.io, kind: Rollout }
+    - { group: autoscaling, kind: HorizontalPodAutoscaler }
+    - { group: policy, kind: PodDisruptionBudget }
+    - { group: batch, kind: Job }
+    - { group: networking.istio.io, kind: VirtualService }
+    - { group: networking.istio.io, kind: DestinationRule }
+    - { group: networking.istio.io, kind: ServiceEntry }
+    - { group: security.istio.io, kind: AuthorizationPolicy }
+  {{- with $.Values.policy.productSyncWindows }}
+  syncWindows:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,8 @@
+# payment-api: layer 3 (environment: uat). Canary rehearsed before prod.
+env:
+  LOG_LEVEL: info
+strategy:
+  type: canary
+  canary:
+    weights: [25, 50]
+    pause: 2m

@@ -1,0 +1,5 @@
+# payment-api: layer 3 (environment: stage)
+env:
+  LOG_LEVEL: info
+strategy:
+  type: rolling

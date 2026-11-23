@@ -1,0 +1,29 @@
+{{- $name := include "product.name" . -}}
+{{- $ns := include "product.namespace" . -}}
+{{- $strategy := include "product.strategy" . -}}
+{{- $extra := list -}}
+{{- if eq $strategy "canary" }}{{ $extra = list "canary" }}{{ end -}}
+{{- if eq $strategy "blueGreen" }}{{ $extra = list "preview" }}{{ end -}}
+{{- if .Values.persistence.enabled }}{{ $extra = list "headless" }}{{ end -}}
+{{- range $suffix := prepend $extra "" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ ternary $name (printf "%s-%s" $name $suffix) (eq $suffix "") }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "product.labels" $ | nindent 4 }}
+spec:
+  type: ClusterIP
+  {{- if eq $suffix "headless" }}
+  clusterIP: None
+  {{- end }}
+  selector:
+    {{- include "product.selectorLabels" $ | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $.Values.port }}
+      targetPort: http
+      appProtocol: http
+{{- end }}

@@ -1,0 +1,19 @@
+{{- $ns := include "tenant.namespace" . -}}
+# One StorageClass per customer per environment (decisions #9): every disk is encrypted with the
+# customer's key and carries the mandatory labels. In the DR cluster the key is the DR-region key.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ printf "sc-%s" $ns }}
+  labels:
+    {{- include "tenant.labels" . | nindent 4 }}
+  annotations:
+    {{- include "tenant.protect" . | nindent 4 }}
+provisioner: pd.csi.storage.gke.io
+parameters:
+  type: {{ .Values.storage.diskType }}
+  disk-encryption-kms-key: {{ .Values.storage.kmsKey }}
+  labels: {{ printf "customer=%s,environment=%s,env-group=%s,product=platform,region-role=%s,managed-by=argocd" .Values.customer .Values.environment .Values.envGroup .Values.regionRole }}
+reclaimPolicy: {{ .Values.storage.reclaimPolicy }}
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true

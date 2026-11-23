@@ -1,0 +1,71 @@
+{{- /*
+Platform add-ons: one ApplicationSet per add-on, cluster generator over the group's registered
+clusters (primary and DR). In-cluster platform software comes from Git, never from Terraform (§14).
+*/ -}}
+{{- range .Values.addons }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: {{ printf "addon-%s" .name }}
+  namespace: {{ include "root.ns" $ }}
+  labels:
+    {{- include "root.labels" $ | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .wave | quote }}
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    {{- include "root.appsetSyncPolicy" $ | nindent 4 }}
+  generators:
+    - clusters:
+        selector:
+          matchLabels:
+            platform.example/env-group: {{ $.Values.group }}
+  template:
+    metadata:
+      name: {{ printf "'{{ .name }}-%s'" .name }}
+      labels:
+        customer: shared
+        environment: shared
+        env-group: {{ $.Values.group }}
+        product: platform
+        region-role: {{`'{{ index .metadata.labels "platform.example/region-role" }}'`}}
+        managed-by: argocd
+    spec:
+      project: platform-addons
+      source:
+        {{- if .chart }}
+        repoURL: {{ .chart.repoURL }}
+        chart: {{ .chart.name }}
+        targetRevision: {{ .chart.version }}
+        helm:
+          releaseName: {{ .name }}
+          {{- with .values }}
+          valuesObject:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- else }}
+        repoURL: {{ $.Values.repoURL }}
+        targetRevision: {{ $.Values.targetRevision }}
+        path: {{ .path }}
+        helm:
+          releaseName: {{ .name }}
+          parameters:
+            - { name: cluster, value: {{`'{{ .name }}'`}} }
+            - { name: region, value: {{`'{{ index .metadata.labels "platform.example/region" }}'`}} }
+            - { name: regionRole, value: {{`'{{ index .metadata.labels "platform.example/region-role" }}'`}} }
+          valuesObject:
+            group: {{ $.Values.group }}
+            computeProject: {{ $.Values.computeProject }}
+            gatewayHosts: {{ toJson $.Values.gatewayHosts }}
+            egressHosts: {{ toJson $.Values.egressHosts }}
+            jwt: {{ toJson $.Values.mesh.jwt }}
+        {{- end }}
+      destination:
+        server: {{`'{{ .server }}'`}}
+        namespace: {{ .namespace }}
+      syncPolicy:
+        {{- include "root.appSyncPolicy" (dict "Values" $.Values "extra" (list "CreateNamespace=true")) | nindent 8 }}
+{{- end }}

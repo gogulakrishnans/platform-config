@@ -10,6 +10,7 @@ locals {
   p         = local.reg.projects
   n         = local.reg.project_numbers
   hub       = local.plat.hubRegion
+  repo_url  = "https://github.com/${local.plat.github.org}/${local.plat.github.repo}.git"
 
   # Project kind => APIs.
   services = {
@@ -126,6 +127,18 @@ resource "google_project_iam_member" "terraform_side" {
   project = each.value.project
   role    = each.value.role
   member  = each.value.member
+
+  depends_on = [module.project]
+}
+
+# The Managed Prometheus query frontend on every cluster of a group (argocd/addons/platform) reads
+# metrics for canary analysis. Granted to its Workload Identity principal; no GSA, no key.
+resource "google_project_iam_member" "gmp_frontend" {
+  for_each = local.plat.groups
+
+  project = local.p[each.value.computeProject]
+  role    = "roles/monitoring.viewer"
+  member  = "principal://iam.googleapis.com/projects/${local.n[each.value.computeProject]}/locations/global/workloadIdentityPools/${local.p[each.value.computeProject]}.svc.id.goog/subject/ns/platform-system/sa/gmp-frontend"
 
   depends_on = [module.project]
 }
@@ -267,6 +280,9 @@ resource "helm_release" "argocd_nonprod" {
     group           = each.key
     service_account = module.platform["nonprod"].argocd_service_accounts[each.key]
     install_crds    = each.key == "devstage"
+    repo_url        = local.repo_url
+    appset_policy   = "sync"
+    root_prune      = true
   })]
 }
 
@@ -283,5 +299,8 @@ resource "helm_release" "argocd_prod" {
     group           = "prod"
     service_account = module.platform["prod"].argocd_service_accounts["prod"]
     install_crds    = true
+    repo_url        = local.repo_url
+    appset_policy   = "create-update" # never delete Applications from a generator in prod
+    root_prune      = false
   })]
 }

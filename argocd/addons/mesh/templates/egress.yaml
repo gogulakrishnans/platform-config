@@ -1,0 +1,92 @@
+{{- $ns := .Values.egress.namespace -}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" . | nindent 4 }}
+    pod-security.kubernetes.io/enforce: restricted
+---
+{{ include "mesh.gateway" (dict "root" . "name" "egress-gateway" "cfg" .Values.egress) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: egress-gateway
+  namespace: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: { istio: egress-gateway }
+  ports:
+    - { name: tls, port: 443, targetPort: 8443 }
+---
+# Gateway leg of the egress allowlist: egress gateway -> external host (via Cloud NAT static
+# IPs). Product charts own the sidecar -> gateway leg in the customer namespace.
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: egress-gateway
+  namespace: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" . | nindent 4 }}
+spec:
+  selector: { istio: egress-gateway }
+  servers:
+    - port: { number: 443, name: tls, protocol: TLS }
+      tls: { mode: PASSTHROUGH }
+      hosts:
+        {{- range .Values.egressHosts }}
+        - {{ first (splitList ":" .) | quote }}
+        {{- else }}
+        - "none.invalid"
+        {{- end }}
+{{- range .Values.egressHosts }}
+{{- $h := first (splitList ":" .) }}
+{{- $port := last (splitList ":" .) | int }}
+{{- $id := $h | replace "." "-" | trunc 55 | trimSuffix "-" }}
+---
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: {{ $id }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" $ | nindent 4 }}
+spec:
+  hosts: [{{ $h | quote }}]
+  exportTo: ["."]
+  location: MESH_EXTERNAL
+  resolution: DNS
+  ports:
+    - { number: {{ $port }}, name: {{ printf "tls-%d" $port }}, protocol: TLS }
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: {{ printf "%s-out" $id }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "mesh.labels" $ | nindent 4 }}
+spec:
+  hosts: [{{ $h | quote }}]
+  gateways: [egress-gateway]
+  exportTo: ["."]
+  tls:
+    - match:
+        - { gateways: [egress-gateway], port: 443, sniHosts: [{{ $h | quote }}] }
+      route:
+        - destination: { host: {{ $h | quote }}, port: { number: {{ $port }} } }
+{{- end }}
+---
+# Mesh-wide STRICT mTLS (tenant namespaces also set it explicitly).
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: istio-system
+  labels:
+    {{- include "mesh.labels" . | nindent 4 }}
+spec:
+  mtls: { mode: STRICT }

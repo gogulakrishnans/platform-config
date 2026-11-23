@@ -1,0 +1,6 @@
+# UAT instance (argocd-uat on the platform-nonprod management cluster).
+policy:
+  applicationsSync: sync
+  preserveResourcesOnDeletion: false
+  prune: true
+  productSyncWindows: []

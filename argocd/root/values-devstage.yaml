@@ -1,0 +1,6 @@
+# Dev/Stage instance (argocd-devstage on the platform-nonprod management cluster).
+policy:
+  applicationsSync: sync
+  preserveResourcesOnDeletion: false
+  prune: true
+  productSyncWindows: []

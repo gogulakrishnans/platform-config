@@ -1,0 +1,55 @@
+# Product ApplicationSet: one Application per customer x GKE product x environment x target cluster
+# (prod: primary, and DR at minimum replicas unless hot-standby or failed over). Deploys
+# helm/product-base with the values layers base -> product -> environment -> customer -> platform.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: products
+  namespace: {{ include "root.ns" . }}
+  labels:
+    {{- include "root.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  syncPolicy:
+    {{- include "root.appsetSyncPolicy" . | nindent 4 }}
+  generators:
+    - git:
+        repoURL: {{ .Values.repoURL }}
+        revision: {{ .Values.targetRevision }}
+        files:
+          - path: {{ printf "argocd/generated/%s/products/*.yaml" .Values.group }}
+  template:
+    metadata:
+      name: {{`'{{ .argocd.name }}'`}}
+      labels:
+        customer: {{`'{{ .argocd.customer }}'`}}
+        environment: {{`'{{ .argocd.environment }}'`}}
+        env-group: {{`'{{ .argocd.group }}'`}}
+        product: {{`'{{ .product.shortCode }}'`}}
+        region-role: {{`'{{ .argocd.regionRole }}'`}}
+        managed-by: argocd
+      annotations:
+        argocd.argoproj.io/manifest-generate-paths: {{`'.;/products/{{ .argocd.product }}/helm;/customers/{{ .argocd.customer }}/helm/{{ .argocd.product }};/{{ .path.path }}/{{ .path.filename }}'`}}
+    spec:
+      project: {{`'{{ .argocd.project }}'`}}
+      source:
+        repoURL: {{ .Values.repoURL }}
+        targetRevision: {{ .Values.targetRevision }}
+        path: helm/product-base
+        helm:
+          releaseName: {{`'{{ .product.shortCode }}'`}}
+          ignoreMissingValueFiles: true     # layers 3-4 are optional
+          valueFiles:
+            - {{`'../../products/{{ .argocd.product }}/helm/values.yaml'`}}
+            - {{`'../../products/{{ .argocd.product }}/helm/values-{{ .argocd.environment }}.yaml'`}}
+            - {{`'../../customers/{{ .argocd.customer }}/helm/{{ .argocd.product }}/values.yaml'`}}
+            - {{`'../../customers/{{ .argocd.customer }}/helm/{{ .argocd.product }}/values-{{ .argocd.environment }}.yaml'`}}
+            - {{`'../../{{ .path.path }}/{{ .path.filename }}'`}}
+      destination:
+        name: {{`'{{ .argocd.cluster }}'`}}
+        namespace: {{`'{{ .argocd.namespace }}'`}}
+      syncPolicy:
+        {{- include "root.appSyncPolicy" (dict "Values" .Values "extra" list) | nindent 8 }}

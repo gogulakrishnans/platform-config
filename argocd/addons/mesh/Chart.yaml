@@ -1,0 +1,9 @@
+apiVersion: v2
+name: mesh
+description: >-
+  Per-cluster mesh add-on on managed Istio (Cloud Service Mesh): ingress gateway behind the
+  load balancer NEG, egress gateway for the catalog allowlist, mesh-wide STRICT mTLS and JWT
+  validation at the edge (architecture §11, §12).
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

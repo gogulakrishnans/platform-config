@@ -1,0 +1,53 @@
+# Tenant chart defaults (platform-owned). Per-Application values come from the GitOps index,
+# argocd/generated/<group>/tenants/<customer>-<env>[-dr].yaml (scripts/render-gitops.py).
+
+# ApplicationSet parameters. Present in the generated values file; ignored by the chart.
+argocd: {}
+
+# --- identity (injected) --------------------------------------------------------------------
+customer: ""            # customer ID, e.g. acme-corp
+environment: ""         # dev | stage | uat | prod
+envGroup: ""            # devstage | uat | prod
+regionRole: primary     # primary | dr
+
+# Kubernetes service accounts, one per GKE product (name = product short code). Each one
+# impersonates the customer env GSA for Cloud SQL IAM login (L3 grants workloadIdentityUser).
+serviceAccounts: []
+#  - name: payment
+#    gsa: acme-corp-prod@pfx-compute-prod.iam.gserviceaccount.com
+
+# --- storage (decisions #9) --------------------------------------------------------------------
+storage:
+  kmsKey: ""            # customer "<env>-data" key in the cluster's region
+  diskType: pd-balanced
+  reclaimPolicy: Delete # Retain in prod (injected)
+
+# --- quota (computed from the catalog sizing by render-gitops) ----------------------------------
+quota:
+  requestsCpu: 100m
+  requestsMemory: 128Mi
+  limitsMemory: 128Mi
+  pods: 1
+  persistentVolumeClaims: 0   # 0 unless an approved product declares a persistent volume
+  requestsStorage: 0Mi
+
+limitRange:
+  defaultRequest: { cpu: 100m, memory: 128Mi }
+  defaultLimit: { memory: 256Mi }
+  max: { cpu: "4", memory: 8Gi }
+
+# --- network (default deny, then explicit allows) ---------------------------------------------
+network:
+  sqlCidrs: []                          # PSA ranges of the customer's region (+ DR pair in prod), port 3307
+  googleApisCidrs: [199.36.153.4/30]    # restricted.googleapis.com (VPC-SC)
+  dnsCidrs: [169.254.20.10/32]          # NodeLocal DNSCache
+  ingressGatewayNamespace: istio-ingress
+  egressGatewayNamespace: istio-egress
+  monitoringNamespace: gmp-system
+
+# --- mesh ---------------------------------------------------------------------------------------
+mesh:
+  injectionLabel: { istio-injection: enabled }
+  jwt:
+    issuer: https://auth.platform.example
+    jwksUri: https://auth.platform.example/.well-known/jwks.json

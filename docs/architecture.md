@@ -487,18 +487,29 @@ Schema migrations run before the new version takes traffic, and follow expand/co
   - No stored kubeconfigs and no authorized-network lists.
   - L2 records each cluster's DNS endpoint in `inventory/clusters/*.yaml`, and an ArgoCD app renders the credential-free cluster Secrets from it.
   - Connect Gateway is for operators only.
-- **App-of-apps per instance:** platform add-ons (Istio config, Argo Rollouts, Falco, Gatekeeper/policy, Backup for GKE config, Managed Prometheus rules), then the ApplicationSets.
-- **Tenant ApplicationSet:**
-  - Git files generator over `customers/*/customer.yaml`, matrixed with the environments of the group
-  - one Application per customer per environment, deploying `helm/tenant` to the placed cluster
-  - also generates the customer's AppProject (scoped to the customer's namespaces and clusters)
-- **Product ApplicationSets:**
-  - one Application per customer × product × environment from `products.yaml` + placement, deploying `helm/product-base` with layered values
-  - the Prod ApplicationSet uses a matrix with `[primary, dr]` and sets `replicaProfile: dr-minimum` on the DR target
+- **App-of-apps per instance:** L1 installs ArgoCD together with one root Application (C17). The root Application deploys `argocd/root`, using that instance's values and the generated `argocd/generated/<group>/root.yaml`. The root renders:
+  - credential-free cluster Secrets, built from the inventory
+  - the AppProjects
+  - one ApplicationSet per platform add-on. The add-ons are cert-manager, Argo Rollouts, Falco, `mesh` (ingress and egress gateways, mesh-wide STRICT mTLS, JWT checks at the edge) and `platform` (canary analysis template, label admission policy, Istio metrics, Managed Prometheus query frontend).
+  - the tenant ApplicationSet and the product ApplicationSet
+- **GitOps index (C18):** a single ApplicationSet generator cannot join the customer, the catalog, the version pins and the cell inventory. `scripts/render-gitops.py` does that join and writes one small file per Application under `argocd/generated/<group>/`:
+  - the file holds the ApplicationSet parameters (`argocd:` block)
+  - the same file is that Application's last, platform-owned Helm values layer
+  - it runs after placement, and CI fails if it is out of date (`--check`)
+  - it also checks each version pin against the support window, the variant-image opt-in, and that prod has no pre-releases
+- **Tenant ApplicationSet:** Git files generator over `argocd/generated/<group>/tenants/*.yaml`. It creates one Application per customer, per environment, per target cluster (in prod, both the primary cluster and the DR cluster), deploying `helm/tenant` into the platform-owned `platform-tenants` AppProject.
+- **Product ApplicationSet:** Git files generator over `argocd/generated/<group>/products/*.yaml`. It creates one Application per customer × GKE product × environment × target cluster, deploying `helm/product-base` into the customer's AppProject.
+  - The value files are applied in this order: chart base → `products/<p>/helm/values.yaml` → `values-<env>.yaml` → `customers/<c>/helm/<p>/values[-<env>].yaml` (optional) → generated platform values. Because the generated layer comes last, identity, version pin, sizing, data names, hosts and egress cannot be overridden.
+  - The DR copy runs at minimum replicas. It stays at full size for hot standby or once the cell's `drActive` is set. It runs no migrations and uses plain rolling updates.
+- **AppProjects (C19):**
+  - `platform-addons` is the only project allowed cluster-wide resources.
+  - `platform-tenants` may create Namespaces, StorageClasses and the guardrails (quota, LimitRange, NetworkPolicy, Sidecar, PeerAuthentication, RequestAuthentication, AuthorizationPolicy, ServiceAccount), only in customer namespaces.
+  - Each customer gets one project for its product Applications. It is limited to that customer's namespaces on its placed clusters (including the DR cluster) and to an allowlist of namespaced workload and routing kinds. It has no cluster-scoped resources and cannot touch the guardrails.
 - **Safety:**
-  - the Prod ApplicationSets use `applicationsSync: create-update` and `preserveResourcesOnDeletion: true`; deletion only through phased decommission
-  - sync windows on Prod
-  - `manifest-generate-paths` annotations
+  - In Prod, every ApplicationSet uses `applicationsSync: create-update` and `preserveResourcesOnDeletion: true`. The Prod controller also sets this as its instance-wide policy, and the Prod root Application never prunes. Deletion only happens through phased decommission.
+  - Prod product syncs run in an allow window (Mon–Thu 14:00–20:00 UTC). A manual sync is still possible outside it, as break-glass.
+  - Tenant namespaces and StorageClasses in prod carry `Delete=false`.
+  - `manifest-generate-paths` limits a refresh to the Applications whose chart, value files or index file changed.
 - **Scale:** controller sharding, repo-server replicas, Redis HA, webhooks instead of polling. Escape hatch: split an instance by region (the generators already filter by placement).
 - **Rebuild:** Git holds all desired state. The runbook covers rebuilding the Prod instance in the pair region.
 
@@ -670,7 +681,10 @@ These resolve inconsistencies or gaps in the brief. None of them changes a locke
 | C14 | One global LB URL map can't be owned by 200 customer states | `L2-edge/{devstage-<region>,uat,prod}` states own everything on the LB, built from Git: backend services (Istio gateway NEGs, Cloud Run serverless NEGs, MIGs, referenced by deterministic names), host rules, Cloud Armor, certificates, map entries and DNS records. L2/L3 create only the NEGs and MIGs. Order: edge (initial) → L3 → edge (host rules). |
 | C15 | Per-group key rings and exchange resources span env states | Per-customer `keys-nonprod`, `keys-prod` and `exchange` states (decisions #24). |
 | C16 | Non-prod Cloud SQL instances aren't tied to a cluster | Non-prod instances are a regional pool declared in `regions.yaml` (`sqlInstances.nonprod`), created by the Dev/Stage L2 state. All of a customer's dev/stage/uat databases go on one non-prod instance in its region. |
-| C17 | Terraform installs ArgoCD into the management clusters | The only Terraform-to-cluster connection (L1, Helm provider, DNS endpoint). L2/L3 never connect to a cluster. |
+| C17 | Terraform installs ArgoCD into the management clusters | The only Terraform-to-cluster connection (L1, Helm provider, DNS endpoint). L2/L3 never connect to a cluster. The ArgoCD release includes the root Application (`extraObjects`); everything after that comes from Git. |
+| C18 | The brief has ApplicationSets generate Applications straight from `customer.yaml` and `products.yaml` | Generators cannot join the customer, the catalog and the inventory. `scripts/render-gitops.py` writes a generated index (one file per Application, which is also its last values layer), and the ApplicationSets read only that index. CI checks it is current, as it does for the Terraform roots (decisions #26). |
+| C19 | The brief says the tenant ApplicationSet "generates the customer's AppProject" | An ApplicationSet creates Applications, not AppProjects. The root chart renders the per-customer AppProjects from the same index. Tenant Applications run in a platform-owned project, because the tenant chart creates cluster-scoped objects (Namespace, StorageClass) that a customer project must not be allowed to create. |
+| C20 | Who holds the canary metrics, the egress routes and the gateway TLS | Canary analysis reads Istio metrics from Managed Prometheus through a query frontend, authorized by a Workload Identity principal (L1 IAM). Egress is split: the product chart owns the sidecar-to-gateway leg and the mesh add-on owns the gateway-to-host leg for the catalog's allowlist. LB-to-gateway TLS uses a cert-manager certificate (the external ALB does not validate backend certificates). |
 
 ## 21. Scenario traceability
 
@@ -687,12 +701,12 @@ These resolve inconsistencies or gaps in the brief. None of them changes a locke
 | Brief deliverable 1: architecture design (4 envs, multi-product/customer, version divergence, data sharing) | This document (§4, §6, §7, §9) + [decisions.md](decisions.md) |
 | Brief deliverable 2: three diagrams (Cloud Run, GKE, Instance Group) | [diagrams/cloud-run.md](diagrams/cloud-run.md), [diagrams/gke.md](diagrams/gke.md), [diagrams/instance-group.md](diagrams/instance-group.md) + `.svg` |
 | Brief deliverable 3: Terraform | `infrastructure/` (Phase 2), layers in §17 |
-| Brief deliverable 4: Helm charts for GKE | `helm/tenant`, `helm/product-base` (Phase 3), §14 |
+| Brief deliverable 4: Helm charts for GKE | `helm/tenant`, `helm/product-base`, `argocd/` (§14); rendered output in `examples/rendered/` |
 | Brief deliverable 5: public repository | Repo layout + CI (Phase 4); push only on request |
 | D1 Architecture design + decisions + traceability | This document, [decisions.md](decisions.md), §21 |
 | D2 Three runtime diagrams (Mermaid + SVG) | `docs/diagrams/{gke,cloud-run,instance-group}.{md,svg}` |
 | D3 Terraform L0-L3, two example customers, fmt/validate/test | Phase 2 |
-| D4 Tenant + product base charts, lint/template/schema | Phase 3 |
+| D4 Tenant + product base charts, lint/template/schema | `scripts/gitops-check.py`: helm lint, ApplicationSet expansion, helm template, kubeconform, manifest policy |
 | D5 Public repo, README, CI, no secrets | Phase 4 |
 | Goal: region-only onboarding | §3 placement |
 | Goal: prod HA/DR by default | §12 |

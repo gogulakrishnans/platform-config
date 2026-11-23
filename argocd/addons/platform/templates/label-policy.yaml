@@ -1,0 +1,54 @@
+# Admission-time label check (decisions #9): every namespace and workload in a tenant namespace
+# carries the six mandatory labels. The same rule runs in CI on rendered manifests.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: mandatory-labels
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [namespaces]
+      - apiGroups: [apps]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [deployments, statefulsets]
+      - apiGroups: [argoproj.io]
+        apiVersions: [v1alpha1]
+        operations: [CREATE, UPDATE]
+        resources: [rollouts]
+      - apiGroups: [batch]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [jobs]
+  variables:
+    - name: labels
+      expression: "has(object.metadata.labels) ? object.metadata.labels : {}"
+    - name: required
+      expression: "['customer', 'environment', 'env-group', 'product', 'region-role', 'managed-by']"
+  validations:
+    - expression: "variables.required.all(k, k in variables.labels)"
+      messageExpression: "'missing mandatory labels: ' + variables.required.filter(k, !(k in variables.labels)).join(', ')"
+    - expression: "variables.labels.all(k, !(k in variables.required) || variables.labels[k].matches('^[a-z][a-z0-9_-]{0,62}$'))"
+      message: "mandatory label values must be lowercase letters, digits, '_' or '-' (GCP label rules)"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: mandatory-labels
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  policyName: mandatory-labels
+  validationActions: [Deny]
+  matchResources:
+    # Tenant namespaces only: platform and GKE system namespaces are labelled by their own charts.
+    namespaceSelector:
+      matchExpressions:
+        - { key: customer, operator: Exists }
+        - { key: customer, operator: NotIn, values: [shared] }

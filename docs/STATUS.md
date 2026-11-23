@@ -3,8 +3,8 @@
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Design, three runtime diagrams, supporting diagrams, decisions, traceability, GCP verification | Complete, approved 2026-11-23 (with decision #22 changed to the DNS-based endpoint) |
-| 2 | Terraform (D3), placement script, database bootstrap job | **Complete, awaiting review** |
-| 3 | Helm charts and ArgoCD (D4) | Not started |
+| 2 | Terraform (D3), placement script, database bootstrap job | Complete (reviewed with Phase 3) |
+| 3 | Helm charts and ArgoCD (D4) | **Complete, awaiting review** |
 | 4 | Supporting artifacts, CI, repo packaging (D5) | Not started |
 
 ## Phase 2 outputs
@@ -21,6 +21,25 @@
   - `scripts/generate-layers.py`
   - `.tflint.hcl`
 - **Documentation:** `docs/what-is-mocked.md`, plus decisions #23-#25 and clarifications C13-C17.
+
+## Phase 3 outputs
+- **Charts:**
+  - `helm/tenant`: namespace guardrails, StorageClass, NetworkPolicies, Istio isolation, KSAs
+  - `helm/product-base`: Rollout or StatefulSet, migration hook, Cloud SQL proxy, Istio routing, AuthZ and egress, HPA and PDB
+  - both charts have strict values schemas
+- **Values layers:**
+  - product: `products/payment-api/helm/values[-<env>].yaml`
+  - customer: `customers/acme-corp/helm/payment-api/values-prod.yaml`
+- **ArgoCD:**
+  - `argocd/root`: app-of-apps per instance, with cluster Secrets, AppProjects and ApplicationSets
+  - add-on charts: `argocd/addons/{mesh,platform}`
+  - L1 installs the root Application and sets the prod `create-update` policy
+- **GitOps index:** `scripts/render-gitops.py` writes `argocd/generated/`, with tests.
+- **Gate:**
+  - `scripts/gitops-check.py`
+  - `policy/check_manifests.py`, with tests
+- **Rendered output:** `examples/rendered/`.
+- **Documentation:** architecture §14, clarifications C18–C20, decisions #26.
 
 ## Depth (per the brief)
 | Component | Depth |

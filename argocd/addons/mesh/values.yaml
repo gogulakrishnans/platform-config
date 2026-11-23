@@ -1,0 +1,20 @@
+# Set by the addon-mesh ApplicationSet (argocd/root/templates/appset-addons.yaml).
+cluster: ""             # cluster name: NEG names neg-istio-<cluster> match the L2-edge backends
+region: ""
+regionRole: primary
+group: ""
+gatewayHosts: []        # e.g. "*.platform.example" and customer custom domains
+egressHosts: []         # "host:port", union of the catalog allowlists
+computeProject: ""
+jwt:
+  issuer: ""
+  jwksUri: ""
+
+ingress:
+  namespace: istio-ingress
+  replicas: { min: 3, max: 12 }
+  resources: { cpu: 500m, memory: 512Mi }
+egress:
+  namespace: istio-egress
+  replicas: { min: 2, max: 6 }
+  resources: { cpu: 250m, memory: 256Mi }

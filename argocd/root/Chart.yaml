@@ -1,0 +1,9 @@
+apiVersion: v2
+name: gitops-root
+description: >-
+  App-of-apps for one ArgoCD instance (Dev/Stage, UAT or Prod): credential-free cluster Secrets,
+  AppProjects, the platform add-on ApplicationSets, the tenant ApplicationSet and the product
+  ApplicationSet (architecture §14). Installed as the root Application by L1 (C17).
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

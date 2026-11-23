@@ -1,0 +1,14 @@
+# Prod instance (argocd-prod on the platform-prod management cluster).
+# ApplicationSets create and update only: an empty or broken generator never deletes an
+# Application. Removal goes through the phased decommission (architecture §14, §17).
+policy:
+  applicationsSync: create-update
+  preserveResourcesOnDeletion: true
+  prune: false                    # the root app never prunes projects, cluster Secrets or ApplicationSets
+  productSyncWindows:
+    - kind: allow
+      schedule: "0 14 * * 1-4"    # Mon-Thu 14:00 UTC
+      duration: 6h
+      applications: ["*"]
+      manualSync: true            # break-glass: a manual sync is still possible outside the window
+      timeZone: UTC

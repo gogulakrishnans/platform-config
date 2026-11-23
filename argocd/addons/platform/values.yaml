@@ -1,0 +1,14 @@
+# Set by the addon-platform ApplicationSet.
+cluster: ""
+region: ""
+regionRole: primary
+group: ""
+gatewayHosts: []
+egressHosts: []
+jwt: {}
+
+computeProject: ""     # the group's compute project (the clusters' project), queried by the GMP frontend
+
+frontend:
+  image: gke.gcr.io/prometheus-engine/frontend:v0.19.4-gke.0
+  replicas: 2
