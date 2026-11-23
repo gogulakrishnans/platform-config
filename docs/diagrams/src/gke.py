@@ -1,7 +1,11 @@
 """GKE deployment architecture (D2) with Google Cloud icons.
 
 Same content as docs/diagrams/gke.md (Mermaid): one region (us-east1) with its DR pair (us-central1)
-and the two example customers. Rendered by scripts/render-diagrams.py into docs/diagrams/gke-gcp.svg.
+and the two example customers.
+
+Render (needs Graphviz, see src/README.md):
+    python docs/diagrams/src/gke.py docs/diagrams/gke-gcp svg    # self-contained SVG, icons embedded
+    python docs/diagrams/src/gke.py docs/diagrams/gke-gcp png
 """
 from diagrams import Cluster, Diagram, Edge, Node
 from diagrams.gcp.compute import GKE, BinaryAuthorization
