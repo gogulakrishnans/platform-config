@@ -1,5 +1,7 @@
 # Network and security
 
+> **Google Cloud icon version:** [network-security-gcp.svg](network-security-gcp.svg) (zoomable) · [network-security-gcp.png](network-security-gcp.png) · source [src/network_security.py](src/network_security.py). The Mermaid diagram below has the same content.
+
 Defense in depth from the edge to the data. See [architecture §10-11](../architecture.md#10-identity-and-encryption).
 
 ```mermaid

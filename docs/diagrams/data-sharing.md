@@ -1,5 +1,7 @@
 # Data-sharing flows (within one customer)
 
+> **Google Cloud icon version:** [data-sharing-gcp.svg](data-sharing-gcp.svg) (zoomable) · [data-sharing-gcp.png](data-sharing-gcp.png) · source [src/data_sharing.py](src/data_sharing.py). The Mermaid diagram below has the same content.
+
 Three one-way, audited flows. No live cross-environment connections, and no path between customers. See [architecture §9](../architecture.md#9-data-sharing-within-a-customer).
 
 ```mermaid

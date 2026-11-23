@@ -1,5 +1,7 @@
 # Resource hierarchy and VPC-SC perimeters
 
+> **Google Cloud icon version:** [hierarchy-gcp.svg](hierarchy-gcp.svg) (zoomable) · [hierarchy-gcp.png](hierarchy-gcp.png) · source [src/hierarchy.py](src/hierarchy.py). The Mermaid diagram below has the same content.
+
 Regions and cells are resources inside the fixed projects, not projects. See [architecture §2](../architecture.md#2-resource-hierarchy-and-project-model).
 
 ```mermaid

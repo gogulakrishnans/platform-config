@@ -1,5 +1,7 @@
 # Multi-product composition
 
+> **Google Cloud icon version:** [multi-product-gcp.svg](multi-product-gcp.svg) (zoomable) · [multi-product-gcp.png](multi-product-gcp.png) · source [src/multi_product.py](src/multi_product.py). The Mermaid diagram below has the same content.
+
 How the catalog and a customer's selection become infrastructure and workloads. See [architecture §6](../architecture.md#6-multi-product-and-multi-customer-model).
 
 ```mermaid

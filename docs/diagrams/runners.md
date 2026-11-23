@@ -1,5 +1,7 @@
 # Shared CI and Ansible runner topology
 
+> **Google Cloud icon version:** [runners-gcp.svg](runners-gcp.svg) (zoomable) · [runners-gcp.png](runners-gcp.png) · source [src/runners.py](src/runners.py). The Mermaid diagram below has the same content.
+
 See [architecture §15](../architecture.md#15-shared-ci-and-ansible-runners).
 
 ```mermaid

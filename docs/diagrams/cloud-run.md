@@ -1,5 +1,7 @@
 # Cloud Run deployment architecture (D2)
 
+> **Google Cloud icon version:** [cloud-run-gcp.svg](cloud-run-gcp.svg) (zoomable) · [cloud-run-gcp.png](cloud-run-gcp.png) · source [src/cloud_run.py](src/cloud_run.py). The Mermaid diagram below has the same content.
+
 Exported SVG: [cloud-run.svg](cloud-run.svg). Example: `acme-corp` runs `reporting-engine` (Cloud Run), which subscribes to events published by `payment-api` (GKE). The customer's region is `us-east1` and its DR pair is `us-central1`.
 
 ```mermaid

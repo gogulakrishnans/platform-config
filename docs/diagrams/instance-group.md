@@ -1,5 +1,7 @@
 # Instance Group (MIG) deployment architecture (D2)
 
+> **Google Cloud icon version:** [instance-group-gcp.svg](instance-group-gcp.svg) (zoomable) · [instance-group-gcp.png](instance-group-gcp.png) · source [src/instance_group.py](src/instance_group.py). The Mermaid diagram below has the same content.
+
 Exported SVG: [instance-group.svg](instance-group.svg). Example: `beta-industries` runs `legacy-billing` (VM-based) in `us-central1`, with its DR pair in `us-east1`.
 
 ```mermaid

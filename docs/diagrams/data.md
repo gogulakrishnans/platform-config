@@ -1,5 +1,7 @@
 # Data architecture
 
+> **Google Cloud icon version:** [data-gcp.svg](data-gcp.svg) (zoomable) · [data-gcp.png](data-gcp.png) · source [src/data.py](src/data.py). The Mermaid diagram below has the same content.
+
 Shared instances, per-customer containers. See [architecture §8](../architecture.md#8-data-architecture).
 
 ```mermaid

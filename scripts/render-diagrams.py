@@ -51,7 +51,19 @@ def check(md: Path) -> bool:
     if not svg.exists():
         print(f"missing {svg.name}")
         return False
-    return True
+    # Google Cloud icon version (docs/diagrams/src, rendered with Graphviz): both outputs present,
+    # and the SVG self-contained (icons embedded, no links to files on the author's machine).
+    ok = True
+    for ext in (".svg", ".png"):
+        out = md.with_name(f"{md.stem}-gcp{ext}")
+        if not out.exists():
+            print(f"missing {out.name} (python docs/diagrams/src/render_all.py {md.stem})")
+            ok = False
+    gsvg = md.with_name(f"{md.stem}-gcp.svg")
+    if gsvg.exists() and re.search(r'href="(?!data:|#|https?:)[^"]+"', gsvg.read_text(encoding="utf-8")):
+        print(f"{gsvg.name} links to local files; re-render so the icons are embedded")
+        ok = False
+    return ok
 
 
 def main() -> int:

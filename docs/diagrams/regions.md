@@ -1,5 +1,7 @@
 # Region model and placement
 
+> **Google Cloud icon version:** [regions-gcp.svg](regions-gcp.svg) (zoomable) · [regions-gcp.png](regions-gcp.png) · source [src/regions.py](src/regions.py). The Mermaid diagram below has the same content.
+
 See [architecture §3](../architecture.md#3-regions-cells-and-placement).
 
 ```mermaid

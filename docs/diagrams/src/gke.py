@@ -1,13 +1,9 @@
 """GKE deployment architecture (D2) with Google Cloud icons.
 
 Same content as docs/diagrams/gke.md (Mermaid): one region (us-east1) with its DR pair (us-central1)
-and the two example customers.
-
-Render (needs Graphviz, see src/README.md):
-    python docs/diagrams/src/gke.py docs/diagrams/gke-gcp svg    # self-contained SVG, icons embedded
-    python docs/diagrams/src/gke.py docs/diagrams/gke-gcp png
+and the two example customers.  Render: python docs/diagrams/src/render_all.py (or this file).
 """
-from diagrams import Cluster, Diagram, Edge, Node
+from diagrams import Cluster, Edge
 from diagrams.gcp.compute import GKE, BinaryAuthorization
 from diagrams.gcp.database import SQL
 from diagrams.gcp.devtools import GCR
@@ -22,56 +18,17 @@ from diagrams.onprem.gitops import Argocd
 from diagrams.onprem.network import Internet
 from diagrams.onprem.vcs import Github
 
-# Edge labels: the library sets 13 pt on every Edge, so the font is part of each edge style.
-EFONT = dict(fontsize="18", fontname="Arial", fontcolor="#37474f")
-# Colours: delivery, user traffic, data, failover / DR, egress.
-DELIVERY = dict(color="#7b1fa2", style="dashed", **EFONT)
-TRAFFIC = dict(color="#1565c0", style="bold", **EFONT)
-DATA = dict(color="#2e7d32", **EFONT)
-DR = dict(color="#ef6c00", style="dashed", **EFONT)
-EGRESS = dict(color="#616161", **EFONT)
-
-# Text sizes are chosen for reading the PNG at 100% zoom (and on a GitHub page) without zooming in.
-FONT = "Arial"
-TEXT = "#202124"
-CLUSTER_FONT = {"fontsize": "22", "fontname": f"{FONT} Bold", "fontcolor": TEXT}
-PROD = {"bgcolor": "#fdecea", "pencolor": "#c62828", "penwidth": "2", **CLUSTER_FONT}
-NONPROD = {"bgcolor": "#e8f0fe", "pencolor": "#1a73e8", "penwidth": "2", **CLUSTER_FONT}
-DRC = {"bgcolor": "#fff3e0", "pencolor": "#ef6c00", "penwidth": "2", **CLUSTER_FONT}
-DATAC = {"bgcolor": "#e6f4ea", "pencolor": "#2e7d32", "penwidth": "2", **CLUSTER_FONT}
-NS = {"bgcolor": "#ffffff", "pencolor": "#757575", "style": "dashed", "fontsize": "19",
-      "fontname": FONT, "fontcolor": TEXT}
-
-graph_attr = {
-    "fontsize": "34",
-    "fontname": f"{FONT} Bold",
-    "fontcolor": TEXT,
-    "labelloc": "t",
-    "pad": "0.6",
-    "nodesep": "1.1",
-    "ranksep": "1.6",
-    "splines": "spline",
-    "compound": "true",
-    "forcelabels": "true",
-    "newrank": "true",
-    "dpi": "110",
-}
-# Icons sit at the top of each node and the label below it; nodes are a little taller than the
-# library default so 18 pt labels never overlap the icon.
-node_attr = {"fontsize": "18", "fontname": FONT, "fontcolor": TEXT, "imagepos": "tc"}
-Node._height = 2.2
-edge_attr = {"fontsize": "17", "fontname": FONT, "fontcolor": "#37474f", "penwidth": "2", "arrowsize": "1.2"}
+from _style import CONTROL, DATA, DATAC, DELIVERY, DR, DRC, EGRESS, GREY, LINK, NONPROD, NS, PROD, TRAFFIC, diagram, main
 
 
-def render(outfile: str, outformat: str = "png") -> None:
-    with Diagram("GKE deployment architecture", filename=outfile, outformat=outformat, show=False,
-                 direction="LR", graph_attr=graph_attr, node_attr=node_attr, edge_attr=edge_attr):
+def render(outfile: str, outformat: str) -> None:
+    with diagram("GKE deployment architecture", outfile, outformat):
         users = Users("Customer users\n(internet)")
         testers = Users("Customer UAT users\n(allowlisted IPs)")
         ops = Users("Operators")
         saas = Internet("Allowlisted\nexternal APIs")
 
-        with Cluster("Git: platform-config", graph_attr={"bgcolor": "#f5f5f5", "pencolor": "#616161", **CLUSTER_FONT}):
+        with Cluster("Git: platform-config", graph_attr=GREY):
             git = Github("customers/ · products/\nhelm/ · argocd/generated/")
 
         with Cluster("platform-nonprod  (non-prod perimeter)", graph_attr=NONPROD):
@@ -131,8 +88,8 @@ def render(outfile: str, outformat: str = "png") -> None:
         # User traffic
         users >> Edge(**TRAFFIC) >> dns
         users >> Edge(**TRAFFIC) >> armor_p >> Edge(**TRAFFIC) >> glb_p
-        glb_p - Edge(color="#9e9e9e", style="dotted") - cdn
-        glb_p - Edge(color="#9e9e9e", style="dotted") - certs
+        glb_p - Edge(**CONTROL) - cdn
+        glb_p - Edge(**CONTROL) - certs
         glb_p >> Edge(label="NEG", **TRAFFIC) >> igw >> Edge(**TRAFFIC) >> pod_a
         glb_p >> Edge(xlabel="DR NEG: capacity 0\nuntil drActive", **DR) >> ns_dr
         testers >> Edge(**TRAFFIC) >> armor_u >> Edge(**TRAFFIC) >> glb_u >> Edge(**TRAFFIC) >> ns_uat
@@ -148,52 +105,24 @@ def render(outfile: str, outformat: str = "png") -> None:
         ar_p >> Edge(**DELIVERY) >> binauthz >> Edge(**DELIVERY) >> gke_p
 
         # Workloads inside the clusters
-        gke_ds - Edge(color="#bdbdbd", style="invis") - ns_dev
-        gke_u - Edge(color="#bdbdbd") - ns_uat
-        gke_p - Edge(color="#bdbdbd") - igw
-        gke_dr - Edge(color="#bdbdbd") - ns_dr
-        pod_a - Edge(color="#bdbdbd", style="dotted") - ksa
-        pod_a - Edge(color="#bdbdbd", style="dotted") - netpol
+        gke_ds - Edge(style="invis") - ns_dev
+        gke_u - Edge(**LINK) - ns_uat
+        gke_p - Edge(**LINK) - igw
+        gke_dr - Edge(**LINK) - ns_dr
+        pod_a - Edge(**CONTROL) - ksa
+        pod_a - Edge(**CONTROL) - netpol
         igw >> Edge(**TRAFFIC) >> pod_b
 
         # Identity and data
         ksa >> Edge(label="WIF → bucket IAM", **DATA) >> gcs
         ksa >> Edge(label="Auth Proxy, IAM login\nCONNECT own DB only", **DATA) >> sql
         sql >> Edge(label="async replication", **DR) >> sql_dr
-        sql >> Edge(label="CMEK", style="dotted", color="#2e7d32", **EFONT) >> kms
-        gcs >> Edge(style="dotted", color="#2e7d32", **EFONT) >> kms
+        sql >> Edge(label="CMEK", **CONTROL) >> kms
+        gcs >> Edge(**CONTROL) >> kms
 
         # Egress
         pod_a >> Edge(**EGRESS) >> egw >> Edge(**EGRESS) >> nat >> Edge(**EGRESS) >> saas
 
 
-def embed_icons(svg_path: str) -> None:
-    """Make the SVG self-contained: the library links icons by local file path, so inline each one
-    as a data URI. The result renders the same on GitHub, in a browser, or on another machine."""
-    import base64
-    import mimetypes
-    import re
-    from pathlib import Path
-
-    p = Path(svg_path)
-    text = p.read_text(encoding="utf-8")
-
-    def inline(m: re.Match) -> str:
-        src = Path(m.group(2))
-        if not src.exists():
-            return m.group(0)
-        mime = mimetypes.guess_type(src.name)[0] or "image/png"
-        return f'{m.group(1)}="data:{mime};base64,{base64.b64encode(src.read_bytes()).decode()}"'
-
-    text = re.sub(r'(xlink:href|href)="([^"]+\.(?:png|svg))"', inline, text)
-    p.write_text(text, encoding="utf-8", newline="\n")
-
-
 if __name__ == "__main__":
-    import sys
-
-    out = sys.argv[1] if len(sys.argv) > 1 else "gke-gcp"
-    fmt = sys.argv[2] if len(sys.argv) > 2 else "svg"
-    render(out, fmt)
-    if fmt == "svg":
-        embed_icons(f"{out}.svg")
+    main(render, "gke-gcp")

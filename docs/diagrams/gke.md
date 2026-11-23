@@ -1,6 +1,8 @@
 # GKE deployment architecture (D2)
 
-Exported SVG: [gke.svg](gke.svg). Google Cloud icon version (prototype): [gke-gcp.svg](gke-gcp.svg) (zoomable; PNG: [gke-gcp.png](gke-gcp.png)), source [src/gke.py](src/gke.py). It shows one region (`us-east1`) with its DR pair (`us-central1`) and the two example customers. Other regions repeat the same pattern.
+> **Google Cloud icon version:** [gke-gcp.svg](gke-gcp.svg) (zoomable) · [gke-gcp.png](gke-gcp.png) · source [src/gke.py](src/gke.py). The Mermaid diagram below has the same content.
+
+Exported SVG: [gke.svg](gke.svg). It shows one region (`us-east1`) with its DR pair (`us-central1`) and the two example customers. Other regions repeat the same pattern.
 
 ```mermaid
 flowchart TB
